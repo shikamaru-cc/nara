@@ -2,8 +2,9 @@
 #include <ncurses.h>
 
 #include <vector>
-#include <iostream>
 #include <fstream>
+#include <iostream>
+#include <algorithm>
 
 #include "bench.hpp"
 
@@ -141,15 +142,60 @@ public:
 };
 
 class gomoku_ai {
+private:
+    points_t candidates;
+
+    // prior of a candidate depends on its distance from board center.
+    int prior_of(point_t p) {
+        static const point_t board_center =
+            { gomoku_board::WIDTH / 2, gomoku_board::WIDTH / 2 };
+
+        int dx = p.x - board_center.x;
+        int dy = p.y - board_center.y;
+        return -(dx * dx + dy * dy);
+    }
+
+    void init_candidates(void) {
+        for(int i = 0; i < gomoku_board::WIDTH; i++)
+            for(int j = 0; j < gomoku_board::WIDTH; j++)
+                candidates.push_back({i, j});
+
+        auto compare_priority = [&](point_t p1, point_t p2){
+            return prior_of(p1) > prior_of(p2);
+        };
+
+        std::sort(candidates.begin(), candidates.end(), compare_priority);
+    }
+
+    int evaluate(gomoku_board const & board, gomoku_chess last) {
+        return 0;
+    }
+
+    int trypoint(gomoku_board const & board, gomoku_chess chess, point_t pos) {
+        gomoku_board board_copy = gomoku_board(board);
+        board_copy.setchess(pos.x, pos.y, chess);
+        return evaluate(board_copy, chess);
+    }
+
 public:
+    gomoku_ai() { init_candidates(); }
+
     point_t getnext(gomoku_board const & board, gomoku_chess chess) {
-        for(int i = 0; i < gomoku_board::WIDTH; i++) {
-            for(int j = 0; j < gomoku_board::WIDTH; j++) {
-                if(board.getchess(i, j) == EMPTY)
-                    return point_t{i, j};
+        int max_score = -10000;
+        point_t best_point = point_t{-1, -1};
+
+        for(auto & candidate : candidates) {
+            point_t pos{candidate.x, candidate.y};
+            if(board.getchess(pos) == EMPTY) {
+                int score = trypoint(board, chess, pos);
+                if(score > max_score) {
+                    max_score = score;
+                    best_point = pos;
+                }
             }
         }
-        return point_t{-1, -1};
+
+        return best_point;
     }
 };
 
