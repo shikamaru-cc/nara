@@ -32,7 +32,7 @@ points_t mkline(point_t center, point_t dir) {
     return points;
 }
 
-enum gomoku_chess { EMPTY, BLACK, WHITE };
+enum gomoku_chess { EMPTY, OUTBX, BLACK, WHITE };
 
 class gomoku_board {
 private:
@@ -57,7 +57,7 @@ public:
     }
 
     gomoku_chess getchess(int x, int y) const {
-        return outbox(x, y) ? EMPTY : chesses[x][y];
+        return outbox(x, y) ? OUTBX : chesses[x][y];
     }
 
     gomoku_chess getchess(point_t point) const {
@@ -141,9 +141,85 @@ public:
     }
 };
 
+// gomoku_evaler is used for evaluating pattern
+class gomoku_evaler {
+public:
+    // desc_notion is the descriptor for describing line pattern
+    // X for self, O for opp, E for empty
+    enum desc_notation { X, O, E };
+
+    // desc_t contains a vector of desc_notion to denote a pattern
+    using desc_t = std::vector<desc_notation>;
+
+    // Following lists the pattern name and pattern for evaluating progress
+    // SICK2:
+    // FLEX2:
+    // SICK3:
+    // FLEX3:
+    // SICK4: EXXXXO OXXXXE
+    // FLEX4: EXXXXE
+    // FLEX5: XXXXX
+    enum pattern_name { SICK2 = 0, FLEX2, SICK3, FLEX3, SICK4, FLEX4, FLEX5 };
+
+    std::vector<desc_t> patterns[7];
+
+    void init_patterns(void) {
+        patterns[SICK4].push_back(desc_t{E, X, X, X, X, O});
+        patterns[SICK4].push_back(desc_t{O, X, X, X, X, E});
+
+        patterns[FLEX4].push_back(desc_t{E, X, X, X, X, E});
+
+        patterns[FLEX5].push_back(desc_t{X, X, X, X, X});
+    }
+
+    gomoku_evaler() { init_patterns(); }
+
+    bool same_desc(desc_t d1, desc_t d2) {
+        if(d1.size() != d2.size()) return false;
+        for(int i = 0; i < d1.size(); i++)
+            if(d1[i] != d2[i]) return false;
+        return true;
+    }
+
+    std::vector<desc_t> slide_desc(desc_t to_slide, int slide_size) {
+        assert(to_slide.size() > slide_size);
+        std::vector<desc_t> ret;
+        for(int i = 0; i < to_slide.size() - slide_size; i++) {
+            ret.push_back(
+                desc_t(to_slide.begin()+i, to_slide.begin()+i+slide_size)
+            );
+        }
+        return ret;
+    }
+
+    bool match_desc(desc_t to_match, desc_t desc) {
+        std::vector<desc_t> slides = slide_desc(desc, to_match.size());
+        for(auto slide : slides)
+            if(same_desc(to_match, slide))
+                return true;
+        return false;
+    }
+
+    bool match_pattern(std::vector<desc_t> const & pattern, desc_t line_desc) {
+        for(auto desc : pattern)
+            if(match_desc(desc, line_desc))
+                return true;
+        return false;
+    }
+
+    int eval_line(desc_t line_desc) {
+        for(int i = FLEX5; i >= 0; i--)
+            if(match_pattern(patterns[i], line_desc))
+                return i * 10;
+        return 0;
+    }
+};
+
 class gomoku_ai {
 private:
     points_t candidates;
+
+    gomoku_evaler evaler;
 
     // prior of a candidate depends on its distance from board center.
     int prior_of(point_t p) {
@@ -155,6 +231,7 @@ private:
         return -(dx * dx + dy * dy);
     }
 
+    // TODO: init candidates at compile time
     void init_candidates(void) {
         for(int i = 0; i < gomoku_board::WIDTH; i++)
             for(int j = 0; j < gomoku_board::WIDTH; j++)
@@ -167,8 +244,53 @@ private:
         std::sort(candidates.begin(), candidates.end(), compare_priority);
     }
 
-    int evaluate(gomoku_board const & board, gomoku_chess last) {
-        return 0;
+    gomoku_evaler::desc_t points_to_desc(
+        gomoku_board const & board, points_t points
+    ) {
+        assert(points.size() == 9);
+
+        auto mid_chess = board.getchess(points[4]);
+
+        assert(mid_chess == BLACK || mid_chess == WHITE);
+
+        gomoku_evaler::desc_t desc;
+        for(auto & point : points) {
+            auto chess = board.getchess(point);
+            if(chess == EMPTY)
+                desc.push_back(gomoku_evaler::E);
+            else if(chess == mid_chess)
+                desc.push_back(gomoku_evaler::X);
+            else // opp or outbox
+                desc.push_back(gomoku_evaler::O);
+        }
+        return desc;
+    }
+
+    int evaluate_pos(gomoku_board const & board, point_t pos) {
+        int score = 0;
+        for(auto & dir : directions) {
+            auto points = mkline(pos, dir);
+            auto line_desc = points_to_desc(board, points);
+            score += evaler.eval_line(line_desc);
+        }
+        return score;
+    }
+
+    int evaluate(gomoku_board const & board, gomoku_chess my_chess) {
+        int me_total = 0;
+        int op_total = 0;
+        for(int i = 0; i < gomoku_board::WIDTH; i++) {
+            for(int j = 0; j < gomoku_board::WIDTH; j++) {
+                auto chess = board.getchess(i, j);
+                if(chess == EMPTY)
+                    continue;
+                if(chess == my_chess)
+                    me_total += evaluate_pos(board, {i, j});
+                else
+                    op_total += evaluate_pos(board, {i, j});
+            }
+        }
+        return me_total - op_total;
     }
 
     int trypoint(gomoku_board const & board, gomoku_chess chess, point_t pos) {
