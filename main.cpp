@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <unordered_map>
 
 #include "bench.hpp"
 
@@ -74,18 +75,13 @@ public:
     void setchess(int x, int y, gomoku_chess chess) {
         assert(x >= 0 && x < WIDTH);
         assert(y >= 0 && y < WIDTH);
-
-        if(winner != 0) return;
-
         chesses[x][y] = chess;
+    }
 
+    void setchess_and_test(int x, int y, gomoku_chess chess) {
+        if(winner != 0) return;
+        setchess(x, y, chess);
         winner = testpoint(x, y);
-
-        /*
-        auto elapsed = benchmark([&](){ winner = testpoint(x, y); });
-        logger << "eval elapsed " << elapsed << '\n';
-        logger.flush();
-        */
     }
 
     bool iswin(points_t const & points, int start, int stop) {
@@ -162,6 +158,18 @@ public:
     // desc_t contains a vector of desc_notion to denote a pattern
     using desc_t = std::vector<desc_notation>;
 
+    std::string desc_to_string(desc_t const & desc) {
+        std::string str;
+        for(auto const & n : desc) {
+            switch(n) {
+            case X: str += "X"; break;
+            case O: str += "O"; break;
+            case E: str += "E"; break;
+            }
+        }
+        return str;
+    }
+
     friend std::ostream & operator << (std::ostream & os, desc_t desc) {
         for(auto notation : desc) {
             switch(notation) {
@@ -185,6 +193,8 @@ public:
     const int pattern_score[7] = {10, 20, 100, 1000, 2000, 10000, 100000};
 
     std::vector<desc_t> patterns[7];
+
+    std::unordered_map<std::string, int> pattern_scores;
 
     void init_patterns(void) {
         patterns[SICK2].push_back(desc_t{O, X, X, E});
@@ -213,7 +223,41 @@ public:
         patterns[FLEX5].push_back(desc_t{X, X, X, X, X});
     }
 
-    gomoku_evaler() { init_patterns(); }
+    std::vector<desc_t> add_projection(std::vector<desc_t> & descs) {
+        std::vector<desc_t> ret;
+        for(auto desc : descs) {
+            desc.push_back(X);
+            ret.push_back(desc);
+            desc.pop_back();
+
+            desc.push_back(O);
+            ret.push_back(desc);
+            desc.pop_back();
+
+            desc.push_back(E);
+            ret.push_back(desc);
+            desc.pop_back();
+        }
+        return ret;
+    }
+
+    void init_pattern_map(void) {
+        init_patterns();
+
+        std::vector<desc_t> descs;
+        descs.push_back(desc_t{X});
+        descs.push_back(desc_t{O});
+        descs.push_back(desc_t{E});
+
+        for(int i = 0; i < 8; i++)
+            descs = add_projection(descs);
+
+        for(auto & desc : descs) {
+            pattern_scores.emplace(desc_to_string(desc), eval_line(desc));
+        }
+    }
+
+    gomoku_evaler() { init_pattern_map(); }
 
     bool same_desc(desc_t d1, desc_t d2) {
         if(d1.size() != d2.size()) return false;
@@ -262,6 +306,10 @@ public:
             if(match_pattern(patterns[i], line_desc))
                 return pattern_score[i];
         return 0;
+    }
+
+    int get_line_score(desc_t line_desc) {
+        return pattern_scores.at(desc_to_string(line_desc));
     }
 };
 
@@ -323,7 +371,7 @@ private:
         for(auto & dir : directions) {
             auto points = mkline(pos, dir);
             auto line_desc = points_to_desc(board, points);
-            score += evaler.eval_line(line_desc);
+            score += evaler.get_line_score(line_desc);
         }
         return score;
     }
@@ -346,7 +394,7 @@ private:
     }
 
     std::tuple<point_t, int> search(
-        gomoku_board const & board, gomoku_chess next, int depth
+        gomoku_board & board, gomoku_chess next, int depth
     ) {
         int max_score = -10000000;
         int min_score = 10000000;
@@ -359,13 +407,12 @@ private:
             if(board.getchess(pos) != EMPTY)
                 continue;
 
-            gomoku_board board_copy = gomoku_board(board);
-            board_copy.setchess(pos.x, pos.y, next);
+            board.setchess(pos.x, pos.y, next);
 
             if(depth == 1) {
-                score = evaluate(board_copy);
+                score = evaluate(board);
             } else {
-                auto [_, _score] = search(board_copy, oppof(next), depth - 1);
+                auto [_, _score] = search(board, oppof(next), depth - 1);
                 score = _score;
             }
 
@@ -377,6 +424,8 @@ private:
                 min_score = score;
                 min_pos = pos;
             }
+
+            board.setchess(pos.x, pos.y, EMPTY);
         }
 
         return (depth % 2 == 0) ? std::make_tuple(max_pos, max_score)
@@ -387,7 +436,8 @@ public:
     gomoku_ai(gomoku_chess chess): mine(chess) { init_candidates(); }
 
     point_t getnext(gomoku_board const & board) {
-        auto [pos, score] = search(board, mine, 2 /* search depth */);
+        auto board_copy = gomoku_board(board);
+        auto [pos, score] = search(board_copy, mine, 2 /* search depth */);
         return pos;
     }
 };
@@ -409,7 +459,7 @@ void display(gomoku_board const & board, cursor_t const & cursor) {
     for(int i = 0; i < gomoku_board::WIDTH; i++) {
         for(int j = 0; j < gomoku_board::WIDTH; j++) {
             switch (board.chesses[i][j]) {
-            case EMPTY: printw("+"); break;
+            case EMPTY: printw("-"); break;
             case BLACK: printw("X"); break;
             case WHITE: printw("O"); break;
             }
@@ -470,7 +520,7 @@ gomoku_chess applyaction(
         break;
     case CHOOSE:
         if(board.getchess(cursor.x, cursor.y) == EMPTY) {
-            board.setchess(cursor.x, cursor.y, chess);
+            board.setchess_and_test(cursor.x, cursor.y, chess);
             return (chess == BLACK) ? WHITE : BLACK;
         }
     default:
@@ -512,7 +562,7 @@ int main() {
             logger << "get next elapsed " << elapsed << '\n';
             logger.flush();
 
-            board.setchess(ai_next.x, ai_next.y, ai_chess);
+            board.setchess_and_test(ai_next.x, ai_next.y, ai_chess);
             cursor.set(ai_next.x, ai_next.y);
         } else { // player turn
             for(;;) {
