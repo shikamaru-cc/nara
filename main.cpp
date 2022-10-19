@@ -1,6 +1,7 @@
 #include <cassert>
 #include <ncurses.h>
 
+#include <tuple>
 #include <vector>
 #include <fstream>
 #include <iostream>
@@ -216,8 +217,6 @@ public:
     }
 
     std::vector<desc_t> slide_desc(desc_t desc, int slide_size) {
-        // TODO: just slide [ mid - size, mid + size ]
-
         assert(desc.size() == 9 && desc.size() > slide_size);
 
         desc_t to_slide;
@@ -228,20 +227,12 @@ public:
                 desc.begin() + 4 - (slide_size -1), desc.begin() + 4 + slide_size
             );
 
-        logger << slide_size << ' ' << desc << ' ' << to_slide << ' ';
-
         std::vector<desc_t> ret;
         for(int i = 0; i < to_slide.size() - slide_size + 1; i++) {
             ret.push_back(
                 desc_t(to_slide.begin()+i, to_slide.begin()+i+slide_size)
             );
         }
-
-        for(auto x : ret)
-            logger << x << ' ';
-        logger << '\n';
-        logger.flush();
-
         return ret;
     }
 
@@ -270,6 +261,8 @@ public:
 
 class gomoku_ai {
 private:
+    gomoku_chess mine;
+
     points_t candidates;
 
     gomoku_evaler evaler;
@@ -329,7 +322,7 @@ private:
         return score;
     }
 
-    int evaluate(gomoku_board const & board, gomoku_chess my_chess) {
+    int evaluate(gomoku_board const & board) {
         int me_total = 0;
         int op_total = 0;
         for(int i = 0; i < gomoku_board::WIDTH; i++) {
@@ -337,7 +330,7 @@ private:
                 auto chess = board.getchess(i, j);
                 if(chess == EMPTY)
                     continue;
-                if(chess == my_chess)
+                if(chess == mine)
                     me_total += evaluate_pos(board, {i, j});
                 else
                     op_total += evaluate_pos(board, {i, j});
@@ -346,31 +339,55 @@ private:
         return me_total - op_total;
     }
 
-    int trypoint(gomoku_board const & board, gomoku_chess chess, point_t pos) {
-        gomoku_board board_copy = gomoku_board(board);
-        board_copy.setchess(pos.x, pos.y, chess);
-        return evaluate(board_copy, chess);
+    gomoku_chess oppof(gomoku_chess chess) {
+        assert(chess == BLACK || chess == WHITE);
+        return chess == BLACK ? WHITE : BLACK;
     }
 
-public:
-    gomoku_ai() { init_candidates(); }
-
-    point_t getnext(gomoku_board const & board, gomoku_chess chess) {
-        int max_score = -10000;
-        point_t best_point = point_t{-1, -1};
+    std::tuple<point_t, int> search(
+        gomoku_board const & board, gomoku_chess next, int depth
+    ) {
+        int max_score = -10000000;
+        int min_score = 10000000;
+        point_t max_pos, min_pos;
 
         for(auto & candidate : candidates) {
+            int score;
             point_t pos{candidate.x, candidate.y};
-            if(board.getchess(pos) == EMPTY) {
-                int score = trypoint(board, chess, pos);
-                if(score > max_score) {
-                    max_score = score;
-                    best_point = pos;
-                }
+
+            if(board.getchess(pos) != EMPTY)
+                continue;
+
+            gomoku_board board_copy = gomoku_board(board);
+            board_copy.setchess(pos.x, pos.y, next);
+
+            if(depth == 1) {
+                score = evaluate(board_copy);
+            } else {
+                auto [_, _score] = search(board_copy, oppof(next), depth - 1);
+                score = _score;
+            }
+
+            if(score > max_score) {
+                max_score = score;
+                max_pos = pos;
+            }
+            if(score < min_score) {
+                min_score = score;
+                min_pos = pos;
             }
         }
 
-        return best_point;
+        return (depth % 2 == 0) ? std::make_tuple(max_pos, max_score)
+                : std::make_tuple(min_pos, min_score);
+    }
+
+public:
+    gomoku_ai(gomoku_chess chess): mine(chess) { init_candidates(); }
+
+    point_t getnext(gomoku_board const & board) {
+        auto [pos, score] = search(board, mine, 2 /* search depth */);
+        return pos;
     }
 };
 
@@ -492,10 +509,11 @@ int main() {
     */
 
     // ai mode
-    gomoku_ai ai = gomoku_ai();
 
     gomoku_chess my_chess = BLACK;
     gomoku_chess ai_chess = WHITE;
+
+    gomoku_ai ai = gomoku_ai(ai_chess);
 
     gomoku_action action = getaction();
     while(action != QUIT) {
@@ -505,7 +523,7 @@ int main() {
             // point_t ai_next = ai.getnext(board, ai_chess);
 
             point_t ai_next;
-            auto elapsed = benchmark([&](){ ai_next = ai.getnext(board, ai_chess); });
+            auto elapsed = benchmark([&](){ ai_next = ai.getnext(board); });
             logger << "get next elapsed " << elapsed << '\n';
             logger.flush();
 
