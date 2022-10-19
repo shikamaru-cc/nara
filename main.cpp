@@ -13,7 +13,7 @@ std::ofstream logger;
 struct point_t {
     int x;
     int y;
-    point_t(int _x, int _y): x(_x), y(_y) {}
+    point_t(int _x = 0, int _y = 0): x(_x), y(_y) {}
 };
 
 const point_t directions[4] = {
@@ -72,9 +72,13 @@ public:
 
         chesses[x][y] = chess;
 
+        winner = testpoint(x, y);
+
+        /*
         auto elapsed = benchmark([&](){ winner = testpoint(x, y); });
         logger << "eval elapsed " << elapsed << '\n';
         logger.flush();
+        */
     }
 
     bool iswin(points_t const & points, int start, int stop) {
@@ -151,21 +155,51 @@ public:
     // desc_t contains a vector of desc_notion to denote a pattern
     using desc_t = std::vector<desc_notation>;
 
+    friend std::ostream & operator << (std::ostream & os, desc_t desc) {
+        for(auto notation : desc) {
+            switch(notation) {
+            case X: os << 'X'; break;
+            case O: os << 'O'; break;
+            case E: os << 'E'; break;
+            }
+        }
+        return os;
+    }
+
     // Following lists the pattern name and pattern for evaluating progress
-    // SICK2:
-    // FLEX2:
-    // SICK3:
-    // FLEX3:
-    // SICK4: EXXXXO OXXXXE
+    // SICK2: OXXE   EXXO
+    // FLEX2: EXXE   EXEXE
+    // SICK3: EXXXO  OXXXE  OXXEXE EXXEXO OXEXXE EXEXXO
+    // FLEX3: EXXXE  EXXEXE EXEXXE
+    // SICK4: EXXXXO OXXXXE XXEXX
     // FLEX4: EXXXXE
     // FLEX5: XXXXX
     enum pattern_name { SICK2 = 0, FLEX2, SICK3, FLEX3, SICK4, FLEX4, FLEX5 };
+    const int pattern_score[7] = {10, 20, 100, 1000, 2000, 10000, 100000};
 
     std::vector<desc_t> patterns[7];
 
     void init_patterns(void) {
+        patterns[SICK2].push_back(desc_t{O, X, X, E});
+        patterns[SICK2].push_back(desc_t{E, X, X, O});
+
+        patterns[FLEX2].push_back(desc_t{E, X, X, E});
+        patterns[FLEX2].push_back(desc_t{E, X, E, X, E});
+
+        patterns[SICK3].push_back(desc_t{E, X, X, X, O});
+        patterns[SICK3].push_back(desc_t{O, X, X, X, E});
+        patterns[SICK3].push_back(desc_t{O, X, X, E, X, E});
+        patterns[SICK3].push_back(desc_t{E, X, X, E, X, O});
+        patterns[SICK3].push_back(desc_t{O, X, E, X, X, E});
+        patterns[SICK3].push_back(desc_t{E, X, E, X, X, O});
+
+        patterns[FLEX3].push_back(desc_t{E, X, X, X, E});
+        patterns[FLEX3].push_back(desc_t{E, X, X, E, X, E});
+        patterns[FLEX3].push_back(desc_t{E, X, E, X, X, E});
+
         patterns[SICK4].push_back(desc_t{E, X, X, X, X, O});
         patterns[SICK4].push_back(desc_t{O, X, X, X, X, E});
+        patterns[SICK4].push_back(desc_t{X, X, E, X, X});
 
         patterns[FLEX4].push_back(desc_t{E, X, X, X, X, E});
 
@@ -181,14 +215,33 @@ public:
         return true;
     }
 
-    std::vector<desc_t> slide_desc(desc_t to_slide, int slide_size) {
-        assert(to_slide.size() > slide_size);
+    std::vector<desc_t> slide_desc(desc_t desc, int slide_size) {
+        // TODO: just slide [ mid - size, mid + size ]
+
+        assert(desc.size() == 9 && desc.size() > slide_size);
+
+        desc_t to_slide;
+        if(slide_size > 4)
+            to_slide = desc;
+        else
+            to_slide = desc_t(
+                desc.begin() + 4 - (slide_size -1), desc.begin() + 4 + slide_size
+            );
+
+        logger << slide_size << ' ' << desc << ' ' << to_slide << ' ';
+
         std::vector<desc_t> ret;
-        for(int i = 0; i < to_slide.size() - slide_size; i++) {
+        for(int i = 0; i < to_slide.size() - slide_size + 1; i++) {
             ret.push_back(
                 desc_t(to_slide.begin()+i, to_slide.begin()+i+slide_size)
             );
         }
+
+        for(auto x : ret)
+            logger << x << ' ';
+        logger << '\n';
+        logger.flush();
+
         return ret;
     }
 
@@ -210,7 +263,7 @@ public:
     int eval_line(desc_t line_desc) {
         for(int i = FLEX5; i >= 0; i--)
             if(match_pattern(patterns[i], line_desc))
-                return i * 10;
+                return pattern_score[i];
         return 0;
     }
 };
@@ -449,7 +502,13 @@ int main() {
         applyaction(cursor, board, action, my_chess);
 
         if(action == CHOOSE) {
-            point_t ai_next = ai.getnext(board, ai_chess);
+            // point_t ai_next = ai.getnext(board, ai_chess);
+
+            point_t ai_next;
+            auto elapsed = benchmark([&](){ ai_next = ai.getnext(board, ai_chess); });
+            logger << "get next elapsed " << elapsed << '\n';
+            logger.flush();
+
             board.setchess(ai_next.x, ai_next.y, ai_chess);
         }
 
