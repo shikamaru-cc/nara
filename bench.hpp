@@ -7,5 +7,5 @@ auto benchmark(F&& func) {
     auto start = std::chrono::system_clock::now();
     func();
     auto end = std::chrono::system_clock::now();
-    return end - start;
+    return std::chrono::duration_cast<std::chrono::seconds>(end - start);
 }

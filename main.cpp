@@ -3,6 +3,7 @@
 
 #include <tuple>
 #include <vector>
+#include <string>
 #include <fstream>
 #include <iostream>
 #include <algorithm>
@@ -34,6 +35,11 @@ points_t mkline(point_t center, point_t dir) {
 }
 
 enum gomoku_chess { EMPTY, OUTBX, BLACK, WHITE };
+
+gomoku_chess oppof(gomoku_chess chess) {
+    assert(chess == BLACK || chess == WHITE);
+    return chess == BLACK ? WHITE : BLACK;
+}
 
 class gomoku_board {
 private:
@@ -339,11 +345,6 @@ private:
         return me_total - op_total;
     }
 
-    gomoku_chess oppof(gomoku_chess chess) {
-        assert(chess == BLACK || chess == WHITE);
-        return chess == BLACK ? WHITE : BLACK;
-    }
-
     std::tuple<point_t, int> search(
         gomoku_board const & board, gomoku_chess next, int depth
     ) {
@@ -396,6 +397,7 @@ struct cursor_t {
     int y;
 
     cursor_t(int _x = 0, int _y = 0): x(_x), y(_y) {}
+    void set(int _x, int _y) { x = _x; y = _y; }
     void goup(void)    { if(x > 0) x--; }
     void godown(void)  { if(x < gomoku_board::WIDTH) x++; }
     void goleft(void)  { if(y > 0) y--; }
@@ -483,68 +485,59 @@ int main() {
     gomoku_board board = gomoku_board();
     cursor_t cursor;
 
-    initscr();
-    display(board, cursor);
-
-    /* player mode
-    gomoku_action action = getaction();
-    gomoku_chess chess = BLACK;
-    while(action != QUIT) {
-        chess = applyaction(board, cursor, action, chess);
-        display(board, cursor);
-
-        if(board.winner != 0) {
-            move(22, 0);
-            if(board.winner == 1)
-                printw("Black win!");
-            else
-                printw("White win!");
-            refresh();
-            getaction();
-            break;
-        }
-
-        action = getaction();
-    }
-    */
-
     // ai mode
 
-    gomoku_chess my_chess = BLACK;
-    gomoku_chess ai_chess = WHITE;
+    std::cout << "Please choose your chess, b for X, others for O: ";
+    std::string choose;
+    std::cin >> choose;
+    std::cout << choose;
+
+    gomoku_chess my_chess;
+    gomoku_chess ai_chess;
+
+    my_chess = (choose == "b") ? BLACK : WHITE;
+    ai_chess = oppof(my_chess);
 
     gomoku_ai ai = gomoku_ai(ai_chess);
 
-    gomoku_action action = getaction();
-    while(action != QUIT) {
-        applyaction(cursor, board, action, my_chess);
+    initscr();
+    display(board, cursor);
 
-        if(action == CHOOSE) {
-            // point_t ai_next = ai.getnext(board, ai_chess);
-
+    gomoku_chess turn = BLACK;
+    while(board.winner == 0) {
+        if(turn == ai_chess) {
             point_t ai_next;
+
             auto elapsed = benchmark([&](){ ai_next = ai.getnext(board); });
             logger << "get next elapsed " << elapsed << '\n';
             logger.flush();
 
             board.setchess(ai_next.x, ai_next.y, ai_chess);
+            cursor.set(ai_next.x, ai_next.y);
+        } else { // player turn
+            for(;;) {
+                gomoku_action action = getaction();
+                if(action == QUIT)
+                    goto quit;
+                applyaction(cursor, board, action, my_chess);
+                display(board, cursor);
+                if(action == CHOOSE)
+                    break;
+            }
         }
-
         display(board, cursor);
-        if(board.winner != 0) {
-            move(20, 0);
-            if(board.winner == 1)
-                printw("Black win!");
-            else
-                printw("White win!");
-            refresh();
-            getaction();
-            break;
-        }
-
-        action = getaction();
+        turn = oppof(turn);
     }
 
+    move(20, 0);
+    if(board.winner == 1)
+        printw("Black win!");
+    else
+        printw("White win!");
+    refresh();
+    getaction();
+
+quit:
     logger.close();
     endwin();
     return 0;
