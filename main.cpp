@@ -2,6 +2,7 @@
 #include <ncurses.h>
 
 #include <tuple>
+#include <ranges>
 #include <vector>
 #include <string>
 #include <fstream>
@@ -155,19 +156,30 @@ public:
     // X for self, O for opp, E for empty
     enum desc_notation { X, O, E };
 
+    static char notation2ch(desc_notation n) {
+        switch(n) {
+        case X:  return 'X';
+        case O:  return 'O';
+        default: return 'E';
+        }
+    }
+
     // desc_t contains a vector of desc_notion to denote a pattern
     using desc_t = std::vector<desc_notation>;
 
     std::string desc_to_string(desc_t const & desc) {
-        std::string str;
-        for(auto const & n : desc) {
-            switch(n) {
-            case X: str += "X"; break;
-            case O: str += "O"; break;
-            case E: str += "E"; break;
-            }
-        }
-        return str;
+        std::string ret;
+        std::ranges::copy(
+            desc | std::views::transform(notation2ch),
+            std::back_inserter(ret)
+        );
+        return ret;
+    }
+
+    friend desc_t operator + (desc_t d1, desc_t d2) {
+        for(auto n : d2)
+            d1.push_back(n);
+        return d1;
     }
 
     friend std::ostream & operator << (std::ostream & os, desc_t desc) {
@@ -190,126 +202,112 @@ public:
     // FLEX4: EXXXXE
     // FLEX5: XXXXX
     enum pattern_name { SICK2 = 0, FLEX2, SICK3, FLEX3, SICK4, FLEX4, FLEX5 };
-    const int pattern_score[7] = {10, 20, 100, 1000, 2000, 10000, 100000};
 
-    std::vector<desc_t> patterns[7];
+    struct pattern_t {
+        int score;
+        std::vector<desc_t> descs;
 
-    std::unordered_map<std::string, int> pattern_scores;
+        pattern_t() = delete;
+        pattern_t(int _score): score(_score) {}
+        void add_desc(desc_t desc) { descs.push_back(desc); }
+    };
+
+    pattern_t patterns[7] = {10, 20, 100, 1000, 2000, 10000, 100000};
+
+    std::unordered_map<std::string, int> desc_scores;
 
     void init_patterns(void) {
-        patterns[SICK2].push_back(desc_t{O, X, X, E});
-        patterns[SICK2].push_back(desc_t{E, X, X, O});
+        patterns[SICK2].add_desc(desc_t{O, X, X, E});
+        patterns[SICK2].add_desc(desc_t{E, X, X, O});
 
-        patterns[FLEX2].push_back(desc_t{E, X, X, E});
-        patterns[FLEX2].push_back(desc_t{E, X, E, X, E});
+        patterns[FLEX2].add_desc(desc_t{E, X, X, E});
+        patterns[FLEX2].add_desc(desc_t{E, X, E, X, E});
 
-        patterns[SICK3].push_back(desc_t{E, X, X, X, O});
-        patterns[SICK3].push_back(desc_t{O, X, X, X, E});
-        patterns[SICK3].push_back(desc_t{O, X, X, E, X, E});
-        patterns[SICK3].push_back(desc_t{E, X, X, E, X, O});
-        patterns[SICK3].push_back(desc_t{O, X, E, X, X, E});
-        patterns[SICK3].push_back(desc_t{E, X, E, X, X, O});
+        patterns[SICK3].add_desc(desc_t{E, X, X, X, O});
+        patterns[SICK3].add_desc(desc_t{O, X, X, X, E});
+        patterns[SICK3].add_desc(desc_t{O, X, X, E, X, E});
+        patterns[SICK3].add_desc(desc_t{E, X, X, E, X, O});
+        patterns[SICK3].add_desc(desc_t{O, X, E, X, X, E});
+        patterns[SICK3].add_desc(desc_t{E, X, E, X, X, O});
 
-        patterns[FLEX3].push_back(desc_t{E, X, X, X, E});
-        patterns[FLEX3].push_back(desc_t{E, X, X, E, X, E});
-        patterns[FLEX3].push_back(desc_t{E, X, E, X, X, E});
+        patterns[FLEX3].add_desc(desc_t{E, X, X, X, E});
+        patterns[FLEX3].add_desc(desc_t{E, X, X, E, X, E});
+        patterns[FLEX3].add_desc(desc_t{E, X, E, X, X, E});
 
-        patterns[SICK4].push_back(desc_t{E, X, X, X, X, O});
-        patterns[SICK4].push_back(desc_t{O, X, X, X, X, E});
-        patterns[SICK4].push_back(desc_t{X, X, E, X, X});
+        patterns[SICK4].add_desc(desc_t{E, X, X, X, X, O});
+        patterns[SICK4].add_desc(desc_t{O, X, X, X, X, E});
+        patterns[SICK4].add_desc(desc_t{X, X, E, X, X});
 
-        patterns[FLEX4].push_back(desc_t{E, X, X, X, X, E});
+        patterns[FLEX4].add_desc(desc_t{E, X, X, X, X, E});
 
-        patterns[FLEX5].push_back(desc_t{X, X, X, X, X});
+        patterns[FLEX5].add_desc(desc_t{X, X, X, X, X});
     }
 
-    std::vector<desc_t> add_projection(std::vector<desc_t> & descs) {
+    std::vector<desc_t> project(
+        std::vector<desc_t> & descs1, std::vector<desc_t> & descs2
+    ) {
         std::vector<desc_t> ret;
-        for(auto desc : descs) {
-            desc.push_back(X);
-            ret.push_back(desc);
-            desc.pop_back();
-
-            desc.push_back(O);
-            ret.push_back(desc);
-            desc.pop_back();
-
-            desc.push_back(E);
-            ret.push_back(desc);
-            desc.pop_back();
-        }
+        for(auto d1 : descs1)
+            for(auto d2 : descs2)
+                ret.push_back(d1 + d2);
         return ret;
     }
 
     void init_pattern_map(void) {
-        init_patterns();
-
-        std::vector<desc_t> descs;
-        descs.push_back(desc_t{X});
-        descs.push_back(desc_t{O});
-        descs.push_back(desc_t{E});
+        std::vector<desc_t> base({desc_t{X}, desc_t{O}, desc_t{E}});
+        std::vector<desc_t> descs = base;
 
         for(int i = 0; i < 8; i++)
-            descs = add_projection(descs);
+            descs = project(descs, base);
 
-        for(auto & desc : descs) {
-            pattern_scores.emplace(desc_to_string(desc), eval_line(desc));
-        }
+        for(auto & desc : descs)
+            desc_scores.emplace(desc_to_string(desc), eval_line(desc));
     }
 
-    gomoku_evaler() { init_pattern_map(); }
-
-    bool same_desc(desc_t d1, desc_t d2) {
-        if(d1.size() != d2.size()) return false;
-        for(int i = 0; i < d1.size(); i++)
-            if(d1[i] != d2[i]) return false;
-        return true;
-    }
-
-    std::vector<desc_t> slide_desc(desc_t desc, int slide_size) {
-        assert(desc.size() == 9 && desc.size() > slide_size);
-
-        desc_t to_slide;
-        if(slide_size > 4)
-            to_slide = desc;
-        else
-            to_slide = desc_t(
-                desc.begin() + 4 - (slide_size -1), desc.begin() + 4 + slide_size
-            );
-
-        std::vector<desc_t> ret;
-        for(int i = 0; i < to_slide.size() - slide_size + 1; i++) {
-            ret.push_back(
-                desc_t(to_slide.begin()+i, to_slide.begin()+i+slide_size)
-            );
-        }
-        return ret;
+    gomoku_evaler() {
+        init_patterns();
+        auto elapsed = benchmark([&](){ this->init_pattern_map(); });
+        logger << elapsed << '\n';
+        logger.flush();
     }
 
     bool match_desc(desc_t to_match, desc_t desc) {
-        std::vector<desc_t> slides = slide_desc(desc, to_match.size());
-        for(auto slide : slides)
-            if(same_desc(to_match, slide))
+        // start point of iter
+        int start = (to_match.size() > 4) ? 0 : 4 - (to_match.size() - 1);
+
+        for(int i = start; i <= 4; i++) {
+            if(std::ranges::equal(to_match,
+                std::ranges::subrange(desc.begin() + i, desc.end())))
                 return true;
+        }
+
         return false;
     }
 
-    bool match_pattern(std::vector<desc_t> const & pattern, desc_t line_desc) {
-        for(auto desc : pattern)
+    bool match_pattern(pattern_t const & pattern, desc_t line_desc) {
+        for(auto desc : pattern.descs)
             if(match_desc(desc, line_desc))
                 return true;
         return false;
     }
 
+    auto desc_tester(desc_t desc) {
+        return [desc, this](pattern_t const & p){
+            return this->match_pattern(p, desc);
+        };
+    }
+
     int eval_line(desc_t line_desc) {
-        for(int i = FLEX5; i >= 0; i--)
-            if(match_pattern(patterns[i], line_desc))
-                return pattern_score[i];
-        return 0;
+
+        auto matched = std::views::reverse(patterns)
+                     | std::views::filter(desc_tester(line_desc))
+                     | std::views::take(1);
+
+        return matched.front().score;
     }
 
     int get_line_score(desc_t line_desc) {
-        return pattern_scores.at(desc_to_string(line_desc));
+        return desc_scores.at(desc_to_string(line_desc));
     }
 };
 
