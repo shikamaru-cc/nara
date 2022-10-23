@@ -545,7 +545,7 @@ private:
                 : std::make_tuple(min_pos, min_score);
     }
 
-    std::tuple<point_t, int> alphabeta(
+    int alphabeta(
         score_board const & curr_sboard, gomoku_chess next,
         int alpha, int beta, bool ismax, int depth
     ) {
@@ -556,9 +556,8 @@ private:
         */
 
         if(depth == 0)
-            return std::make_tuple(point_t{-1, -1}, curr_sboard.getscore());
+            return curr_sboard.getscore();
 
-        point_t bestpos{-1, -1};
         if(ismax) {
             int score = -10000000;
             for(auto & candidate : candidates) {
@@ -568,21 +567,18 @@ private:
                     continue;
 
                 score_board next_sboard = new_score_board(curr_sboard, pos, next);
-                auto [_, _score] = alphabeta(
+
+                int _score = alphabeta(
                     next_sboard, oppof(next), alpha, beta, false, depth - 1
                 );
 
-                if(_score > score) {
-                    score = _score;
-                    bestpos = pos;
-                }
-
+                score = std::max(score, _score);
                 alpha = std::max(alpha, score);
 
                 if(beta <= alpha)
                     break;
             }
-            return std::make_tuple(bestpos, score);
+            return score;
         }
         // ismin
         int score = 10000000;
@@ -593,21 +589,52 @@ private:
                 continue;
 
             score_board next_sboard = new_score_board(curr_sboard, pos, next);
-            auto [_, _score] = alphabeta(
+
+            int _score = alphabeta(
                 next_sboard, oppof(next), alpha, beta, true, depth - 1
             );
 
-            if(_score < score) {
-                score = _score;
-                bestpos = pos;
-            }
-
+            score = std::min(score, _score);
             beta = std::min(beta, score);
 
             if(beta <= alpha)
                 break;
         }
-        return std::make_tuple(bestpos, score);
+        return score;
+    }
+
+    // root alpha beta search node
+    point_t alphabeta_search(
+        score_board const & curr_sboard, gomoku_chess next, int depth
+    ) {
+        assert(depth % 2 == 0);
+
+        int alpha = -10000000;
+        int beta = 10000000;
+
+        point_t bestpos{-1, -1};
+        int score = -10000000;
+        for(auto & candidate : candidates) {
+            point_t pos{candidate.x, candidate.y};
+
+            if(curr_sboard.board.getchess(pos) != EMPTY)
+                continue;
+
+            score_board next_sboard = new_score_board(curr_sboard, pos, next);
+
+            int _score = alphabeta(
+                next_sboard, oppof(next), alpha, beta, false, depth - 1
+            );
+
+            bestpos = (_score > score) ? pos : bestpos;
+
+            score = std::max(score, _score);
+            alpha = std::max(alpha, score);
+
+            if(beta <= alpha)
+                break;
+        }
+        return bestpos;
     }
 
 public:
@@ -617,14 +644,15 @@ public:
         _last_eval_times = 0;
 
         score_board sboard = new_score_board(board);
-        auto [pos, score] = alphabeta(sboard, mine, -10000000, 10000000, true, 4);
+        point_t pos = alphabeta_search(sboard, mine, 4);
 
         /*
         auto [pos_old, score_old] = search(sboard, mine, 2);
         logger << "pos[" << pos.x << ", " << pos.y << "]"
                << " pos_old[" << pos_old.x << ", " << pos_old.y << "]\n";
-        logger.flush();
         */
+        logger << "pos[" << pos.x << ", " << pos.y << "]\n";
+        logger.flush();
 
         /*
         score_board sboard = new_score_board(board);
