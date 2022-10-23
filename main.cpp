@@ -555,6 +555,8 @@ private:
         logger.flush();
         */
 
+        depth_cnt[depth]++;
+
         if(depth == 0)
             return curr_sboard.getscore();
 
@@ -638,10 +640,16 @@ private:
     }
 
 public:
+    // just for debug
+    int depth_cnt[4];
+
     gomoku_ai(gomoku_chess chess): mine(chess) { init_candidates(); }
 
     point_t getnext(gomoku_board const & board) {
         _last_eval_times = 0;
+
+        for(int i = 0; i < 4; i++)
+            depth_cnt[i] = 0;
 
         score_board sboard = new_score_board(board);
         point_t pos = alphabeta_search(sboard, mine, 4);
@@ -651,7 +659,13 @@ public:
         logger << "pos[" << pos.x << ", " << pos.y << "]"
                << " pos_old[" << pos_old.x << ", " << pos_old.y << "]\n";
         */
-        logger << "pos[" << pos.x << ", " << pos.y << "]\n";
+        // logger << "pos[" << pos.x << ", " << pos.y << "]\n";
+
+        logger << " depth0: "  << depth_cnt[0]
+               << " depth1: " << depth_cnt[1]
+               << " depth2: " << depth_cnt[2]
+               << " depth3: " << depth_cnt[3] << "\n";
+
         logger.flush();
 
         /*
