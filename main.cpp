@@ -11,6 +11,8 @@
 #include <unordered_map>
 
 #include "bench.hpp"
+#include "board.hpp"
+#include "evaluate.hpp"
 
 std::ofstream logger;
 
@@ -44,11 +46,6 @@ gomoku_chess oppof(gomoku_chess chess) {
 }
 
 class gomoku_board {
-private:
-    inline bool outbox(int x, int y) const {
-        return x < 0 || x >= WIDTH || y < 0 || y >= WIDTH;
-    }
-
 public:
     static const int WIDTH = 15;
 
@@ -63,6 +60,10 @@ public:
                 chesses[i][j] = EMPTY;
             }
         }
+    }
+
+    static constexpr inline bool outbox(int x, int y) {
+        return x < 0 || x >= WIDTH || y < 0 || y >= WIDTH;
     }
 
     gomoku_chess getchess(int x, int y) const {
@@ -176,6 +177,108 @@ void display(gomoku_board const & board, cursor_t const & cursor) {
     }
     move(cursor.x, cursor.y * 2);
     refresh();
+}
+
+using pos_t = std::tuple<int, int>;
+constexpr int xof(pos_t p) { return std::get<0>(p); }
+constexpr int yof(pos_t p) { return std::get<1>(p); }
+
+// line_t consists of pos_t origin and pos_t dir
+using line_t = std::tuple<pos_t, pos_t>;
+
+const pos_t dir_vec[4] = { {0, 1}, {1, 0}, {1, 1}, {1, -1} };
+
+auto evaluate_line(gomoku_board const & board, line_t line) {
+
+    std::vector<nara::gomoku_chess> chesses;
+
+    pos_t origin = std::get<0>(line);
+    pos_t dir = std::get<1>(line);
+    pos_t p = origin;
+    while(!gomoku_board::outbox(xof(p), yof(p))) {
+        char c;
+        switch(board.getchess(xof(p), yof(p))) {
+        case BLACK: chesses.push_back(nara::BLACK); break;
+        case WHITE: chesses.push_back(nara::WHITE); break;
+        case EMPTY: chesses.push_back(nara::EMPTY); break;
+        }
+        p = {xof(p) + xof(dir), yof(p) + yof(dir)};
+    }
+
+    return nara::evaluate(chesses);
+}
+
+auto __evaluate_board(gomoku_board const & board) {
+    std::vector<nara::eval_result> results_blk;
+    std::vector<nara::eval_result> results_wht;
+
+    pos_t origin, dir;
+
+    // line '-'
+    dir = {0, 1};
+    for(int i = 0; i < gomoku_board::WIDTH; i++) {
+        origin = {i, 0};
+        auto [res_blk, res_wht] = evaluate_line(board, {origin, dir});
+        results_blk.push_back(std::move(res_blk));
+        results_wht.push_back(std::move(res_wht));
+    }
+
+    // line '|'
+    dir = {1, 0};
+    for(int i = 0; i < gomoku_board::WIDTH; i++) {
+        origin = {0, i};
+        auto [res_blk, res_wht] = evaluate_line(board, {origin, dir});
+        results_blk.push_back(std::move(res_blk));
+        results_wht.push_back(std::move(res_wht));
+    }
+
+    // line '/'
+    dir = {-1, 1};
+    for(int i = 0; i < gomoku_board::WIDTH; i++) {
+        origin = {i, 0};
+        auto [res_blk, res_wht] = evaluate_line(board, {origin, dir});
+        results_blk.push_back(std::move(res_blk));
+        results_wht.push_back(std::move(res_wht));
+    }
+    // i == 1 here to avoid re-eval origin {0, 0}
+    for(int i = 1; i < gomoku_board::WIDTH; i++) {
+        origin = {14, i};
+        auto [res_blk, res_wht] = evaluate_line(board, {origin, dir});
+        results_blk.push_back(std::move(res_blk));
+        results_wht.push_back(std::move(res_wht));
+    }
+
+    // line '\'
+    dir = {1, 1};
+    for(int i = 0; i < gomoku_board::WIDTH; i++) {
+        origin = {i, 0};
+        auto [res_blk, res_wht] = evaluate_line(board, {origin, dir});
+        results_blk.push_back(std::move(res_blk));
+        results_wht.push_back(std::move(res_wht));
+    }
+    // i == 1 here to avoid re-eval origin {0, 0}
+    for(int i = 1; i < gomoku_board::WIDTH; i++) {
+        origin = {14, i};
+        auto [res_blk, res_wht] = evaluate_line(board, {origin, dir});
+        results_blk.push_back(std::move(res_blk));
+        results_wht.push_back(std::move(res_wht));
+    }
+
+    return std::make_tuple(results_blk, results_wht);
+}
+
+int evaluate_board(gomoku_board const & board, gomoku_chess iam) {
+    auto [results_blk, results_wht] = __evaluate_board(board);
+
+    int score_blk = 0;
+    for(auto const & res : results_blk)
+        score_blk += res.score;
+
+    int score_wht = 0;
+    for(auto const & res : results_wht)
+        score_wht += res.score;
+
+    return (iam == BLACK) ? score_blk - score_wht : score_wht - score_blk;
 }
 
 // gomoku_evaler is used for evaluating pattern
@@ -472,6 +575,7 @@ private:
 
         ret.board.setchess(next_pos.x, next_pos.y, next_chess);
 
+        /*
         for(auto dir : directions) {
             for(int fac = -4; fac <= 4; fac++) {
                 point_t pos = {next_pos.x + fac * dir.x, next_pos.y + fac * dir.y};
@@ -479,6 +583,7 @@ private:
                     ret.score[pos.x][pos.y] = evaluate_pos(ret.board, pos);
             }
         }
+        */
 
         return ret;
     }
@@ -557,8 +662,15 @@ private:
 
         depth_cnt[depth]++;
 
-        if(depth == 0)
-            return curr_sboard.getscore();
+        if(depth == 0) {
+            int score = 0;
+            auto elap = benchmark([&, this](){
+                score = ::evaluate_board(curr_sboard.board, this->mine);
+            });
+            logger << "evaluate_board elapsed " << elap << '\n';
+            logger.flush();
+            return score;
+        }
 
         if(ismax) {
             int score = -10000000;
@@ -652,7 +764,7 @@ public:
             depth_cnt[i] = 0;
 
         score_board sboard = new_score_board(board);
-        point_t pos = alphabeta_search(sboard, mine, 4);
+        point_t pos = alphabeta_search(sboard, mine, 2);
 
         /*
         auto [pos_old, score_old] = search(sboard, mine, 2);
@@ -661,12 +773,14 @@ public:
         */
         // logger << "pos[" << pos.x << ", " << pos.y << "]\n";
 
+        /*
         logger << " depth0: "  << depth_cnt[0]
                << " depth1: " << depth_cnt[1]
                << " depth2: " << depth_cnt[2]
                << " depth3: " << depth_cnt[3] << "\n";
 
         logger.flush();
+        */
 
         /*
         score_board sboard = new_score_board(board);
@@ -783,9 +897,60 @@ int main() {
             }
         }
         display(board, cursor);
+
+        /*
+        move(17, 0);
+        auto [results_blk, results_wht] = __evaluate_board(board);
+
+        nara::eval_result res_blk;
+        for(auto & res : results_blk) {
+            res_blk.score += res.score;
+            res_blk.pattern_cnt[nara::SICK2] += res.pattern_cnt[nara::SICK2];
+            res_blk.pattern_cnt[nara::FLEX2] += res.pattern_cnt[nara::FLEX2];
+            res_blk.pattern_cnt[nara::SICK3] += res.pattern_cnt[nara::SICK3];
+            res_blk.pattern_cnt[nara::FLEX3] += res.pattern_cnt[nara::FLEX3];
+            res_blk.pattern_cnt[nara::SICK4] += res.pattern_cnt[nara::SICK4];
+            res_blk.pattern_cnt[nara::FLEX4] += res.pattern_cnt[nara::FLEX4];
+            res_blk.pattern_cnt[nara::FLEX5] += res.pattern_cnt[nara::FLEX5];
+        }
+
+        printw("result score: %d\n", res_blk.score);
+        printw("SICK2: %d\n", res_blk.pattern_cnt[nara::SICK2]);
+        printw("FLEX2: %d\n", res_blk.pattern_cnt[nara::FLEX2]);
+        printw("SICK3: %d\n", res_blk.pattern_cnt[nara::SICK3]);
+        printw("FLEX3: %d\n", res_blk.pattern_cnt[nara::FLEX3]);
+        printw("SICK4: %d\n", res_blk.pattern_cnt[nara::SICK4]);
+        printw("FLEX4: %d\n", res_blk.pattern_cnt[nara::FLEX4]);
+        printw("FLEX5: %d\n", res_blk.pattern_cnt[nara::FLEX5]);
+
+        nara::eval_result res_wht;
+        for(auto & res : results_wht) {
+            res_wht.score += res.score;
+            res_wht.pattern_cnt[nara::SICK2] += res.pattern_cnt[nara::SICK2];
+            res_wht.pattern_cnt[nara::FLEX2] += res.pattern_cnt[nara::FLEX2];
+            res_wht.pattern_cnt[nara::SICK3] += res.pattern_cnt[nara::SICK3];
+            res_wht.pattern_cnt[nara::FLEX3] += res.pattern_cnt[nara::FLEX3];
+            res_wht.pattern_cnt[nara::SICK4] += res.pattern_cnt[nara::SICK4];
+            res_wht.pattern_cnt[nara::FLEX4] += res.pattern_cnt[nara::FLEX4];
+            res_wht.pattern_cnt[nara::FLEX5] += res.pattern_cnt[nara::FLEX5];
+        }
+
+        printw("result score: %d\n", res_wht.score);
+        printw("SICK2: %d\n", res_wht.pattern_cnt[nara::SICK2]);
+        printw("FLEX2: %d\n", res_wht.pattern_cnt[nara::FLEX2]);
+        printw("SICK3: %d\n", res_wht.pattern_cnt[nara::SICK3]);
+        printw("FLEX3: %d\n", res_wht.pattern_cnt[nara::FLEX3]);
+        printw("SICK4: %d\n", res_wht.pattern_cnt[nara::SICK4]);
+        printw("FLEX4: %d\n", res_wht.pattern_cnt[nara::FLEX4]);
+        printw("FLEX5: %d\n", res_wht.pattern_cnt[nara::FLEX5]);
+
+        refresh();
+        */
+
         turn = oppof(turn);
     }
 
+    display(board, cursor);
     move(20, 0);
     if(board.winner == 1)
         printw("Black win!");
