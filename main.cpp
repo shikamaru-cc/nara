@@ -338,6 +338,8 @@ private:
 public:
     gomoku_board _board;
 
+    point_t last_pos;
+
     score_board() = delete;
 
     score_board(gomoku_board const & board): _board(board) {
@@ -355,6 +357,8 @@ public:
         score_board const & prev_sboard, gomoku_chess next_chess, point_t next_pos
     ) {
         _board = prev_sboard._board;
+        last_pos = next_pos;
+
         std::ranges::copy(
             &prev_sboard._score_blk[0][0][0],
             &prev_sboard._score_blk[0][0][0] + 15 * 15 * 4,
@@ -390,9 +394,13 @@ public:
         return _board.getchess(pos);
     }
 
-    int score_blk() const { return _total_blk; }
-    int score_wht() const { return _total_wht; }
+    int score_blk() const { return _total_blk - _total_wht; }
+    int score_wht() const { return _total_wht - _total_blk; }
 };
+
+auto is_empty_at(score_board const & sboard) {
+    return [&](point_t pos) { return sboard.getchess(pos) == EMPTY; };
+}
 
 class gomoku_ai {
 private:
@@ -425,36 +433,36 @@ private:
         std::ranges::sort(candidates, compare_priority);
     }
 
-    int _last_eval_times;
-
-    int alphabeta(
+    std::tuple<point_t, int> alphabeta(
         score_board const & sboard, gomoku_chess next,
         int alpha, int beta, bool ismax, int depth
     ) {
-        /*
-        logger << "alphabeta " << alpha << " " << beta
-               << ((ismax)? " max " : " min ") << depth << "\n";
-        logger.flush();
-        */
-
         depth_cnt[depth]++;
 
-        if(depth == 0)
-            return (mine == BLACK)
-                    ? sboard.score_blk() - sboard.score_wht()
-                    : sboard.score_wht() - sboard.score_blk();
+        if(depth == 0) {
+            if(mine == BLACK)
+                return std::make_tuple(sboard.last_pos, sboard.score_blk());
+            else
+                return std::make_tuple(sboard.last_pos, sboard.score_wht());
+        }
+
+        std::vector<point_t> poses;
+        std::ranges::copy(
+            candidates | std::views::filter(is_empty_at(sboard)),
+            std::back_inserter(poses)
+        );
+
+        point_t bestpos;
 
         if(ismax) {
             int score = -10000000;
-            for(auto & candidate : candidates) {
-                point_t pos{candidate.x, candidate.y};
+            for(auto & pos : poses) {
 
-                if(sboard.getchess(pos) != EMPTY)
-                    continue;
+                auto[_ , _score] =
+                    alphabeta(score_board(sboard, next, pos), oppof(next), alpha, beta, false, depth - 1);
 
-                int _score = alphabeta(
-                    score_board(sboard, next, pos), oppof(next), alpha, beta, false, depth - 1
-                );
+                if(_score > score)
+                    bestpos = pos;
 
                 score = std::max(score, _score);
                 alpha = std::max(alpha, score);
@@ -462,19 +470,18 @@ private:
                 if(beta <= alpha)
                     break;
             }
-            return score;
+            return std::make_tuple(bestpos, score);
         }
+
         // ismin
         int score = 10000000;
-        for(auto & candidate : candidates) {
-            point_t pos{candidate.x, candidate.y};
+        for(auto & pos : poses) {
 
-            if(sboard.getchess(pos) != EMPTY)
-                continue;
+            auto[_ , _score] =
+                alphabeta(score_board(sboard, next, pos), oppof(next), alpha, beta, true, depth - 1);
 
-            int _score = alphabeta(
-                score_board(sboard, next, pos), oppof(next), alpha, beta, true, depth - 1
-            );
+            if(_score < score)
+                bestpos = pos;
 
             score = std::min(score, _score);
             beta = std::min(beta, score);
@@ -482,39 +489,7 @@ private:
             if(beta <= alpha)
                 break;
         }
-        return score;
-    }
-
-    // root alpha beta search node
-    point_t alphabeta_search(
-        score_board const & sboard, gomoku_chess next, int depth
-    ) {
-        assert(depth % 2 == 0);
-
-        int alpha = -10000000;
-        int beta = 10000000;
-
-        point_t bestpos{-1, -1};
-        int score = -10000000;
-        for(auto & candidate : candidates) {
-            point_t pos{candidate.x, candidate.y};
-
-            if(sboard.getchess(pos) != EMPTY)
-                continue;
-
-            int _score = alphabeta(
-                score_board(sboard, next, pos), oppof(next), alpha, beta, false, depth - 1
-            );
-
-            bestpos = (_score > score) ? pos : bestpos;
-
-            score = std::max(score, _score);
-            alpha = std::max(alpha, score);
-
-            if(beta <= alpha)
-                break;
-        }
-        return bestpos;
+        return std::make_tuple(bestpos, score);
     }
 
 public:
@@ -527,7 +502,7 @@ public:
         for(int i = 0; i < 4; i++)
             depth_cnt[i] = 0;
 
-        point_t pos = alphabeta_search(score_board(board), mine, 2);
+        auto [pos, score] = alphabeta(score_board(board), mine, -10000000, 10000000, true, 4);
 
         logger << " depth0: "  << depth_cnt[0]
                << " depth1: " << depth_cnt[1]
@@ -599,6 +574,8 @@ gomoku_chess applyaction(
 
 int main() {
     logger.open("LOG");
+
+    gen_lines();
 
     gomoku_board board = gomoku_board();
     cursor_t cursor;
