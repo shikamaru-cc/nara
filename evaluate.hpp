@@ -60,12 +60,12 @@ struct eval_result {
 int search_all(std::string const & line, std::regex const & re) {
     std::string subject(line);
     std::smatch m;
-    int i = 0;
+    int cnt = 0;
     while(std::regex_search(subject, m, re)) {
-        i++;
+        cnt++;
         subject = m.suffix().str();
     }
-    return i;
+    return cnt;
 }
 
 eval_result evaluate_wrap(std::string const & wrapped) {
@@ -103,6 +103,9 @@ char chess2ch4white(gomoku_chess chess) {
 // return eval_result black, eval_result white
 std::tuple<eval_result, eval_result>
 evaluate(std::vector<gomoku_chess> const & chesses) {
+    if(chesses.size() < 5)
+        return std::make_tuple(eval_result{}, eval_result{});
+
     std::string black;
     std::ranges::copy(
         chesses | std::views::transform(chess2ch4black),
