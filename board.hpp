@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cassert>
+#include <vector>
+
 namespace nara {
 
 struct point_t {

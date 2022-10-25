@@ -276,12 +276,8 @@ private:
     gen_chesses(gomoku_board const & board, std::vector<point_t> line) {
         std::vector<nara::gomoku_chess> chesses;
         for(auto & p : line) {
-            switch(board.getchess(p)) {
-            case BLACK: chesses.push_back(nara::BLACK); break;
-            case WHITE: chesses.push_back(nara::WHITE); break;
-            case EMPTY: chesses.push_back(nara::EMPTY); break;
-            // case OUTBX: chesses.push_back(nara::OUTBX); break;
-            }
+            if(board.getchess(p) != OUTBX)
+                chesses.push_back(board.getchess(p));
         }
         return chesses;
     }

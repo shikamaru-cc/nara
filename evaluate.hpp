@@ -38,9 +38,9 @@ std::vector<pattern> patterns{
     {std::regex("OXEXXE"), SICK3},
     {std::regex("EXEXXO"), SICK3},
 
-    {std::regex("EXXXE"), FLEX3},
-    {std::regex("EXXEXE"), FLEX3},
-    {std::regex("EXEXXE"), FLEX3},
+    // {std::regex("EXXXE"), FLEX3},
+    // {std::regex("EXXEXE"), FLEX3},
+    // {std::regex("EXEXXE"), FLEX3},
 
     {std::regex("EXXXXO"), SICK4},
     {std::regex("OXXXXE"), SICK4},
@@ -54,35 +54,88 @@ std::vector<pattern> patterns{
 struct eval_result {
     int pattern_cnt[7];
     int score;
+
+    std::vector<int> to_five;
+    std::vector<int> to_flex4;
+
     eval_result(): pattern_cnt({0}), score(0) {}
 };
 
-int search_all(std::string const & line, std::regex const & re) {
+int search_and_push(
+    std::string const & line,
+    std::vector<int> & to_push,
+    std::regex re,
+    std::vector<int> const & idxs)
+{
+    int si = 0;
+    int cnt = 0;
+    std::smatch m;
+    std::string s = line;
+
+    while(std::regex_search(s, m, re))
+    {
+        for(int idx : idxs)
+            to_push.emplace_back(si + m.position() + idx);
+
+        cnt++;
+        si += m.position() + m.length();
+        s = s.substr(m.position() + m.length());
+    }
+
+    return cnt;
+}
+
+int search_flex3(std::string const & line, std::vector<int> & to_flex4)
+{
+    int cnt = 0;
+    cnt += search_and_push(line, to_flex4, std::regex("EXXXE"), {0, 4});
+    cnt += search_and_push(line, to_flex4, std::regex("EXXEXE"), {0, 3, 5});
+    cnt += search_and_push(line, to_flex4, std::regex("EXEXXE"), {0, 2, 5});
+    return cnt;
+}
+
+int search_all(std::string const & line, std::regex const & re)
+{
     std::string subject(line);
     std::smatch m;
     int cnt = 0;
-    while(std::regex_search(subject, m, re)) {
+    while(std::regex_search(subject, m, re))
+    {
         cnt++;
         subject = m.suffix().str();
     }
     return cnt;
 }
 
-eval_result evaluate_wrap(std::string const & wrapped) {
+eval_result evaluate_wrap(std::string const & wrapped)
+{
     eval_result res;
-    for(auto const & p : patterns) {
+
+    int nmatch = search_flex3(wrapped, res.to_flex4);
+    res.pattern_cnt[FLEX3] += nmatch;
+    res.score += pattern_score[FLEX3] * nmatch;
+
+    for(auto const & p : patterns)
+    {
         int nmatch = search_all(wrapped, p.re);
         res.pattern_cnt[p.t] += nmatch;
         res.score += pattern_score[p.t] * nmatch;
     }
+
     return res;
 }
 
-eval_result evaluate(std::string const & line) {
-    return evaluate_wrap("O" + line + "O");
+eval_result evaluate(std::string const & line)
+{
+    auto res = evaluate_wrap("O" + line + "O");
+    auto dec = [](int & i){ i--; };
+    std::ranges::for_each(res.to_flex4, dec);
+    std::ranges::for_each(res.to_five, dec);
+    return res;
 }
 
-char chess2ch4black(gomoku_chess chess) {
+char chess2ch4black(gomoku_chess chess)
+{
     assert(chess != OUTBX);
     switch(chess) {
     case BLACK: return 'X';
@@ -91,7 +144,8 @@ char chess2ch4black(gomoku_chess chess) {
     }
 }
 
-char chess2ch4white(gomoku_chess chess) {
+char chess2ch4white(gomoku_chess chess)
+{
     assert(chess != OUTBX);
     switch(chess) {
     case WHITE: return 'X';
@@ -102,7 +156,8 @@ char chess2ch4white(gomoku_chess chess) {
 
 // return eval_result black, eval_result white
 std::tuple<eval_result, eval_result>
-evaluate(std::vector<gomoku_chess> const & chesses) {
+evaluate(std::vector<gomoku_chess> const & chesses)
+{
     if(chesses.size() < 5)
         return std::make_tuple(eval_result{}, eval_result{});
 
@@ -121,7 +176,8 @@ evaluate(std::vector<gomoku_chess> const & chesses) {
     return std::make_tuple(evaluate(black), evaluate(white));
 }
 
-void debug_result(std::ostream & os, eval_result const & res) {
+void debug_result(std::ostream & os, eval_result const & res)
+{
     os << "result score: " << res.score << '\n';
     os << "SICK2: " << res.pattern_cnt[nara::SICK2] << '\n';
     os << "FLEX2: " << res.pattern_cnt[nara::FLEX2] << '\n';
@@ -130,6 +186,11 @@ void debug_result(std::ostream & os, eval_result const & res) {
     os << "SICK4: " << res.pattern_cnt[nara::SICK4] << '\n';
     os << "FLEX4: " << res.pattern_cnt[nara::FLEX4] << '\n';
     os << "FLEX5: " << res.pattern_cnt[nara::FLEX5] << '\n';
+
+    os << "to_flex4: ";
+    for(auto i : res.to_flex4)
+        os << i << ' ';
+    os << '\n';
 }
 
 } // namespace nara

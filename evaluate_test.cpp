@@ -11,8 +11,8 @@ int main() {
     }
     */
 
-    // EXXEOOOEEXXXOOE
-    // EOOEXXXEEOOOXXE
+    // EXXEOOOEEOOOEOE
+    // EOOEXXXEEXXXEXE
     std::vector<nara::gomoku_chess> vec{
         nara::EMPTY,
         nara::BLACK,
@@ -23,10 +23,10 @@ int main() {
         nara::WHITE,
         nara::EMPTY,
         nara::EMPTY,
-        nara::BLACK,
-        nara::BLACK,
-        nara::BLACK,
         nara::WHITE,
+        nara::WHITE,
+        nara::WHITE,
+        nara::EMPTY,
         nara::WHITE,
         nara::EMPTY
     };
