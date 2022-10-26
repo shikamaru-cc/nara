@@ -6,11 +6,10 @@
 #include <iostream>
 
 #include "ai.hpp"
+#include "log.hpp"
 #include "bench.hpp"
 #include "board.hpp"
 #include "evaluate.hpp"
-
-std::ofstream logger;
 
 struct cursor_t {
     int x;
@@ -26,6 +25,8 @@ struct cursor_t {
 
 void display(nara::gomoku_board const & board, cursor_t const & cursor) {
     clear();
+
+    move(0, 0);
     for(int i = 0; i < nara::gomoku_board::WIDTH; i++) {
         for(int j = 0; j < nara::gomoku_board::WIDTH; j++) {
             switch (board.chesses[i][j]) {
@@ -37,8 +38,56 @@ void display(nara::gomoku_board const & board, cursor_t const & cursor) {
         }
         printw("\n");
     }
-    move(cursor.x, cursor.y * 2);
+
+    move(16, 0);
+    auto sboard = nara::score_board(board);
+    auto [res_blk, res_wht] = sboard.summary();
+
+    printw("result score: %d\n", sboard.total_score(nara::BLACK));
+    printw("SICK2: %d\n", res_blk.pattern_cnt[nara::SICK2]);
+    printw("FLEX2: %d\n", res_blk.pattern_cnt[nara::FLEX2]);
+    printw("SICK3: %d\n", res_blk.pattern_cnt[nara::SICK3]);
+    printw("FLEX3: %d\n", res_blk.pattern_cnt[nara::FLEX3]);
+    printw("SICK4: %d\n", res_blk.pattern_cnt[nara::SICK4]);
+    printw("FLEX4: %d\n", res_blk.pattern_cnt[nara::FLEX4]);
+    printw("FLEX5: %d\n", res_blk.pattern_cnt[nara::FLEX5]);
+    printw("to FLEX4: ");
+    for(auto p : sboard.to_flex4_points(nara::BLACK))
+    {
+        printw("[%d, %d] ", p.x, p.y);
+    }
+    printw("\n");
+    printw("to FIVE: ");
+    for(auto p : sboard.to_five_points(nara::BLACK))
+    {
+        printw("[%d, %d] ", p.x, p.y);
+    }
+    printw("\n");
+
+    printw("result score: %d\n", sboard.total_score(nara::WHITE));
+    printw("SICK2: %d\n", res_wht.pattern_cnt[nara::SICK2]);
+    printw("FLEX2: %d\n", res_wht.pattern_cnt[nara::FLEX2]);
+    printw("SICK3: %d\n", res_wht.pattern_cnt[nara::SICK3]);
+    printw("FLEX3: %d\n", res_wht.pattern_cnt[nara::FLEX3]);
+    printw("SICK4: %d\n", res_wht.pattern_cnt[nara::SICK4]);
+    printw("FLEX4: %d\n", res_wht.pattern_cnt[nara::FLEX4]);
+    printw("FLEX5: %d\n", res_wht.pattern_cnt[nara::FLEX5]);
+    printw("to FLEX4: ");
+    for(auto p : sboard.to_flex4_points(nara::WHITE))
+    {
+        printw("[%d, %d] ", p.x, p.y);
+    }
+    printw("\n");
+    printw("to FIVE: ");
+    for(auto p : sboard.to_five_points(nara::WHITE))
+    {
+        printw("[%d, %d] ", p.x, p.y);
+    }
+    printw("\n");
+
     refresh();
+
+    move(cursor.x, cursor.y * 2);
 }
 
 enum gomoku_action { UP, DOWN, LEFT, RIGHT, CHOOSE, QUIT, NONE };
@@ -69,7 +118,7 @@ gomoku_action getaction(void) {
     }
 }
 
-void applyaction(
+bool applyaction(
     cursor_t & cursor,
     nara::gomoku_board & board,
     gomoku_action action,
@@ -91,10 +140,12 @@ void applyaction(
     case CHOOSE:
         if(board.getchess(cursor.x, cursor.y) == nara::EMPTY) {
             board.setchess_and_test(cursor.x, cursor.y, chess);
+            return true;
         }
     default:
         {}
     }
+    return false;
 }
 
 int main() {
@@ -124,7 +175,8 @@ int main() {
     display(board, cursor);
 
     nara::gomoku_chess turn = nara::BLACK;
-    while(board.winner == 0) {
+    while(board.winner == 0)
+    {
         if(turn == ai_chess) {
             nara::point_t ai_next;
 
@@ -140,63 +192,12 @@ int main() {
                 gomoku_action action = getaction();
                 if(action == QUIT)
                     goto quit;
-                applyaction(cursor, board, action, my_chess);
-                display(board, cursor);
-                if(action == CHOOSE)
+                if(applyaction(cursor, board, action, my_chess))
                     break;
+                display(board, cursor);
             }
         }
         display(board, cursor);
-
-        /*
-        move(17, 0);
-        auto [results_blk, results_wht] = __evaluate_board(board);
-
-        nara::eval_result res_blk;
-        for(auto & res : results_blk) {
-            res_blk.score += res.score;
-            res_blk.pattern_cnt[nara::SICK2] += res.pattern_cnt[nara::SICK2];
-            res_blk.pattern_cnt[nara::FLEX2] += res.pattern_cnt[nara::FLEX2];
-            res_blk.pattern_cnt[nara::SICK3] += res.pattern_cnt[nara::SICK3];
-            res_blk.pattern_cnt[nara::FLEX3] += res.pattern_cnt[nara::FLEX3];
-            res_blk.pattern_cnt[nara::SICK4] += res.pattern_cnt[nara::SICK4];
-            res_blk.pattern_cnt[nara::FLEX4] += res.pattern_cnt[nara::FLEX4];
-            res_blk.pattern_cnt[nara::FLEX5] += res.pattern_cnt[nara::FLEX5];
-        }
-
-        printw("result score: %d\n", res_blk.score);
-        printw("SICK2: %d\n", res_blk.pattern_cnt[nara::SICK2]);
-        printw("FLEX2: %d\n", res_blk.pattern_cnt[nara::FLEX2]);
-        printw("SICK3: %d\n", res_blk.pattern_cnt[nara::SICK3]);
-        printw("FLEX3: %d\n", res_blk.pattern_cnt[nara::FLEX3]);
-        printw("SICK4: %d\n", res_blk.pattern_cnt[nara::SICK4]);
-        printw("FLEX4: %d\n", res_blk.pattern_cnt[nara::FLEX4]);
-        printw("FLEX5: %d\n", res_blk.pattern_cnt[nara::FLEX5]);
-
-        nara::eval_result res_wht;
-        for(auto & res : results_wht) {
-            res_wht.score += res.score;
-            res_wht.pattern_cnt[nara::SICK2] += res.pattern_cnt[nara::SICK2];
-            res_wht.pattern_cnt[nara::FLEX2] += res.pattern_cnt[nara::FLEX2];
-            res_wht.pattern_cnt[nara::SICK3] += res.pattern_cnt[nara::SICK3];
-            res_wht.pattern_cnt[nara::FLEX3] += res.pattern_cnt[nara::FLEX3];
-            res_wht.pattern_cnt[nara::SICK4] += res.pattern_cnt[nara::SICK4];
-            res_wht.pattern_cnt[nara::FLEX4] += res.pattern_cnt[nara::FLEX4];
-            res_wht.pattern_cnt[nara::FLEX5] += res.pattern_cnt[nara::FLEX5];
-        }
-
-        printw("result score: %d\n", res_wht.score);
-        printw("SICK2: %d\n", res_wht.pattern_cnt[nara::SICK2]);
-        printw("FLEX2: %d\n", res_wht.pattern_cnt[nara::FLEX2]);
-        printw("SICK3: %d\n", res_wht.pattern_cnt[nara::SICK3]);
-        printw("FLEX3: %d\n", res_wht.pattern_cnt[nara::FLEX3]);
-        printw("SICK4: %d\n", res_wht.pattern_cnt[nara::SICK4]);
-        printw("FLEX4: %d\n", res_wht.pattern_cnt[nara::FLEX4]);
-        printw("FLEX5: %d\n", res_wht.pattern_cnt[nara::FLEX5]);
-
-        refresh();
-        */
-
         turn = nara::oppof(turn);
     }
 

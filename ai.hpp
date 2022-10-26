@@ -5,6 +5,8 @@
 #include <vector>
 #include <algorithm>
 
+#include "log.hpp"
+#include "bench.hpp"
 #include "board.hpp"
 #include "evaluate.hpp"
 
@@ -29,7 +31,8 @@ auto evaluate_line(gomoku_board const & board, line_t line)
     point_t ori= line.ori;
     point_t dir = line.dir;
     point_t p = ori;
-    while(!gomoku_board::outbox(p.x, p.y)) {
+    while(!gomoku_board::outbox(p.x, p.y))
+    {
         char c;
         switch(board.getchess(p.x, p.y)) {
         case BLACK: chesses.push_back(nara::BLACK); break;
@@ -41,7 +44,7 @@ auto evaluate_line(gomoku_board const & board, line_t line)
 
     /*
     auto end = std::chrono::system_clock::now();
-    logger << "evaluate_line use"
+    logger << "evaluate_line use "
            << std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
            << "\n";
     logger.flush();
@@ -219,8 +222,77 @@ public:
         return _board.getchess(pos);
     }
 
+    eval_result line_result(gomoku_chess chess, point_t ori, point_t dir)
+    {
+        return (chess == BLACK)
+            ? _score_blk[ori.x][ori.y][idx_of_dir(dir)]
+            : _score_wht[ori.x][ori.y][idx_of_dir(dir)];
+    }
+
+    eval_result line_result(gomoku_chess chess, line_t line)
+    {
+        return line_result(chess, line.ori, line.dir);
+    }
+
+    int total_score(gomoku_chess chess) const
+    {
+        return (chess == BLACK) ? _total_blk : _total_wht;
+    }
+
     int score_blk() const { return _total_blk - _total_wht; }
     int score_wht() const { return _total_wht - _total_blk; }
+
+    std::vector<point_t> to_five_points(gomoku_chess chess)
+    {
+        std::vector<point_t> ret;
+        auto & res = (chess == BLACK) ? _score_blk : _score_wht;
+        for(auto line : all_lines)
+        {
+            auto idxs =
+                res[line.ori.x][line.ori.y][idx_of_dir(line.dir)].to_five;
+            for(int i : idxs)
+                ret.emplace_back(point_t{
+                    line.ori.x + i * line.dir.x,
+                    line.ori.y + i * line.dir.y
+                });
+        }
+        return ret;
+    }
+
+    std::vector<point_t> to_flex4_points(gomoku_chess chess)
+    {
+        std::vector<point_t> ret;
+        auto & res = (chess == BLACK) ? _score_blk : _score_wht;
+        for(auto line : all_lines)
+        {
+            auto idxs =
+                res[line.ori.x][line.ori.y][idx_of_dir(line.dir)].to_flex4;
+            for(int i : idxs)
+                ret.emplace_back(point_t{
+                    line.ori.x + i * line.dir.x,
+                    line.ori.y + i * line.dir.y
+                });
+        }
+        return ret;
+    }
+
+    std::tuple<eval_result, eval_result> summary()
+    {
+        eval_result blk, wht;
+        for(auto line : all_lines)
+        {
+            auto res_blk = line_result(BLACK, line);
+            auto res_wht = line_result(WHITE, line);
+            for(int i = SICK2; i <= FLEX5; i++)
+            {
+                blk.score += res_blk.score;
+                wht.score += res_wht.score;
+                blk.pattern_cnt[i] += res_blk.pattern_cnt[i];
+                wht.pattern_cnt[i] += res_wht.pattern_cnt[i];
+            }
+        }
+        return std::make_tuple(blk, wht);
+    }
 };
 
 auto is_empty_at(score_board const & sboard)
@@ -322,20 +394,11 @@ private:
         return [&](point_t pos){ return gen_choose(board, pos); };
     }
 
-    std::tuple<point_t, int> alphabeta(
-        score_board const & sboard, gomoku_chess next,
-        int alpha, int beta, bool ismax, int depth)
+    std::vector<choose_t>
+    gen_chooses(score_board const & sboard, gomoku_chess next)
     {
-        depth_cnt[depth]++;
-
-        if(depth == 0) {
-            if(mine == BLACK)
-                return std::make_tuple(sboard.last_pos, sboard.score_blk());
-            else
-                return std::make_tuple(sboard.last_pos, sboard.score_wht());
-        }
-
         std::vector<choose_t> chooses;
+
         std::ranges::copy(
             candidates |
             std::views::filter(is_empty_at(sboard)) |
@@ -353,6 +416,24 @@ private:
                 std::back_inserter(chooses)
             );
         }
+
+        return chooses;
+    }
+
+    std::tuple<point_t, int> alphabeta(
+        score_board const & sboard, gomoku_chess next,
+        int alpha, int beta, bool ismax, int depth)
+    {
+        depth_cnt[depth]++;
+
+        if(depth == 0) {
+            if(mine == BLACK)
+                return std::make_tuple(sboard.last_pos, sboard.score_blk());
+            else
+                return std::make_tuple(sboard.last_pos, sboard.score_wht());
+        }
+
+        auto chooses = gen_chooses(sboard, next);
 
         point_t bestpos;
 
@@ -406,7 +487,27 @@ public:
         for(int i = 0; i < 4; i++)
             depth_cnt[i] = 0;
 
+        last_eval_times = 0;
+
+        // auto [pos, score] = alphabeta(score_board(board), mine, -10000000, 10000000, true, 4);
+
+        auto start = std::chrono::system_clock::now();
+
         auto [pos, score] = alphabeta(score_board(board), mine, -10000000, 10000000, true, 4);
+
+        auto end = std::chrono::system_clock::now();
+
+        logger << "get next use "
+               << std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+               << " eval times: " << last_eval_times
+               << '\n';
+
+        logger << "depth0: "  << depth_cnt[0]
+               << " depth1: " << depth_cnt[1]
+               << " depth2: " << depth_cnt[2]
+               << " depth3: " << depth_cnt[3] << "\n";
+
+        logger.flush();
 
         return pos;
     }
