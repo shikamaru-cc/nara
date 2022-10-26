@@ -5,14 +5,9 @@
 #include "evaluate.hpp"
 
 int main() {
-    /*
-    for(auto const & p : nara::patterns) {
-        std::cout << p.score << '\n';
-    }
-    */
-
     // EXXEOOOEEOOOEOE
     // EOOEXXXEEXXXEXE
+    /*
     std::vector<nara::gomoku_chess> vec{
         nara::EMPTY,
         nara::BLACK,
@@ -31,17 +26,18 @@ int main() {
         nara::EMPTY
     };
 
-    /*
-    nara::eval_result res_blk, res_wht;
-    auto used = benchmark([&]{
-        auto [blk, wht] = nara::evaluate(vec);
-        res_blk = blk;
-        res_wht = wht;
-    });
-    */
-
     auto [res_blk, res_wht] = nara::evaluate(vec);
-    // std::cout << "eval use " << used << '\n';
     nara::debug_result(std::cout, res_blk);
     nara::debug_result(std::cout, res_wht);
+    */
+
+    auto start = std::chrono::system_clock::now();
+    auto res = nara::evaluate("EXXEXXEXEXEXXEO");
+    auto end = std::chrono::system_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - start)<< '\n';
+
+    nara::debug_result(std::cout, res);
+
+    res = nara::evaluate("EXXXXOOEXXXXOOE");
+    nara::debug_result(std::cout, res);
 }

@@ -18,7 +18,8 @@ struct line_t {
 // for debug
 static int last_eval_times;
 
-auto evaluate_line(gomoku_board const & board, line_t line) {
+auto evaluate_line(gomoku_board const & board, line_t line)
+{
     last_eval_times++;
 
     // auto start = std::chrono::system_clock::now();
@@ -51,49 +52,57 @@ auto evaluate_line(gomoku_board const & board, line_t line) {
 
 std::vector<line_t> all_lines;
 
-void gen_lines() {
+void gen_lines()
+{
     point_t origin, dir;
 
     // line '-'
     dir = {0, 1};
-    for(int i = 0; i < gomoku_board::WIDTH; i++) {
+    for(int i = 0; i < gomoku_board::WIDTH; i++)
+    {
         origin = {i, 0};
         all_lines.push_back(line_t{origin, dir});
     }
 
     // line '|'
     dir = {1, 0};
-    for(int i = 0; i < gomoku_board::WIDTH; i++) {
+    for(int i = 0; i < gomoku_board::WIDTH; i++)
+    {
         origin = {0, i};
         all_lines.push_back(line_t{origin, dir});
     }
 
     // line '/'
     dir = {-1, 1};
-    for(int i = 0; i < gomoku_board::WIDTH; i++) {
+    for(int i = 0; i < gomoku_board::WIDTH; i++)
+    {
         origin = {i, 0};
         all_lines.push_back(line_t{origin, dir});
     }
     // i == 1 here to avoid re-eval origin {0, 0}
-    for(int i = 1; i < gomoku_board::WIDTH; i++) {
+    for(int i = 1; i < gomoku_board::WIDTH; i++)
+    {
         origin = {14, i};
         all_lines.push_back(line_t{origin, dir});
     }
 
     // line '\'
     dir = {1, 1};
-    for(int i = 0; i < gomoku_board::WIDTH; i++) {
+    for(int i = 0; i < gomoku_board::WIDTH; i++)
+    {
         origin = {i, 0};
         all_lines.push_back(line_t{origin, dir});
     }
     // i == 1 here to avoid re-eval origin {0, 0}
-    for(int i = 1; i < gomoku_board::WIDTH; i++) {
+    for(int i = 1; i < gomoku_board::WIDTH; i++)
+    {
         origin = {14, i};
         all_lines.push_back(line_t{origin, dir});
     }
 }
 
-auto __evaluate_board(gomoku_board const & board) {
+auto evaluate_board(gomoku_board const & board)
+{
     if(all_lines.empty()) gen_lines();
 
     std::vector<nara::eval_result> results_blk;
@@ -104,20 +113,6 @@ auto __evaluate_board(gomoku_board const & board) {
         results_wht.push_back(std::move(res_wht));
     }
     return std::make_tuple(results_blk, results_wht);
-}
-
-int evaluate_board(gomoku_board const & board, gomoku_chess iam) {
-    auto [results_blk, results_wht] = __evaluate_board(board);
-
-    int score_blk = 0;
-    for(auto const & res : results_blk)
-        score_blk += res.score;
-
-    int score_wht = 0;
-    for(auto const & res : results_wht)
-        score_wht += res.score;
-
-    return (iam == BLACK) ? score_blk - score_wht : score_wht - score_blk;
 }
 
 struct score_board {
@@ -131,7 +126,8 @@ private:
     int _total_blk;
     int _total_wht;
 
-    int idx_of_dir(point_t dir) {
+    int idx_of_dir(point_t dir)
+    {
         if(dir == point_t{0, 1}) return 0;
         if(dir == point_t{1, 0}) return 1;
         if(dir == point_t{1, 1}) return 2;
@@ -139,8 +135,10 @@ private:
         assert(false);
     }
 
-    point_t origin_at_line(point_t pos, point_t dir) {
-        for(;;) {
+    point_t origin_at_line(point_t pos, point_t dir)
+    {
+        for(;;)
+        {
            point_t back_pos = {pos.x - dir.x, pos.y - dir.y};
            if(gomoku_board::outbox(back_pos))
                return pos;
@@ -148,11 +146,11 @@ private:
         }
     }
 
-    std::vector<line_t> lines_contain_pos(point_t pos) {
+    std::vector<line_t> lines_contain_pos(point_t pos)
+    {
         std::vector<line_t> lines;
-        for(auto dir : directions) {
+        for(auto dir : directions)
             lines.emplace_back(line_t{origin_at_line(pos, dir), dir});
-        }
         return lines;
     }
 
@@ -163,9 +161,11 @@ public:
 
     score_board() = delete;
 
-    score_board(gomoku_board const & board): _board(board) {
+    score_board(gomoku_board const & board): _board(board)
+    {
         _total_blk = _total_wht = 0;
-        for(auto line : all_lines) {
+        for(auto line : all_lines)
+        {
             auto [res_blk, res_wht] = evaluate_line(_board, line);
             _score_blk[line.ori.x][line.ori.y][idx_of_dir(line.dir)] = res_blk;
             _score_wht[line.ori.x][line.ori.y][idx_of_dir(line.dir)] = res_wht;
@@ -175,8 +175,10 @@ public:
     }
 
     score_board(
-        score_board const & prev_sboard, gomoku_chess next_chess, point_t next_pos
-    ) {
+        score_board const & prev_sboard,
+        gomoku_chess next_chess,
+        point_t next_pos)
+    {
         _board = prev_sboard._board;
         last_pos = next_pos;
 
@@ -195,7 +197,8 @@ public:
 
         _board.setchess(next_pos, next_chess);
 
-        for(auto & line : lines_contain_pos(next_pos)) {
+        for(auto & line : lines_contain_pos(next_pos))
+        {
             _total_blk -=
                 _score_blk[line.ori.x][line.ori.y][idx_of_dir(line.dir)].score;
 
@@ -211,7 +214,8 @@ public:
         }
     }
 
-    gomoku_chess getchess(point_t pos) const {
+    gomoku_chess getchess(point_t pos) const
+    {
         return _board.getchess(pos);
     }
 
@@ -219,7 +223,8 @@ public:
     int score_wht() const { return _total_wht - _total_blk; }
 };
 
-auto is_empty_at(score_board const & sboard) {
+auto is_empty_at(score_board const & sboard)
+{
     return [&](point_t pos) { return sboard.getchess(pos) == EMPTY; };
 }
 
@@ -232,7 +237,8 @@ private:
     points_t candidates;
 
     // prior of a candidate depends on its distance from board center.
-    int prior_of(point_t p) {
+    int prior_of(point_t p)
+    {
         static const point_t board_center =
             { gomoku_board::WIDTH / 2, gomoku_board::WIDTH / 2 };
 
@@ -242,7 +248,8 @@ private:
     }
 
     // TODO: init candidates at compile time
-    void init_candidates(void) {
+    void init_candidates(void)
+    {
         for(int i = 0; i < gomoku_board::WIDTH; i++)
             for(int j = 0; j < gomoku_board::WIDTH; j++)
                 candidates.push_back({i, j});
@@ -262,30 +269,36 @@ private:
     };
 
     std::vector<point_t>
-    line_for_pos(point_t pos, point_t dir) {
+    line_for_pos(point_t pos, point_t dir)
+    {
         std::vector<point_t> line;
-        for(int fac = -4; fac <= 4; fac++) {
-            line.emplace_back(point_t{
-                pos.x + fac * dir.x, pos.y + fac * dir.y
-            });
+        for(int fac = -4; fac <= 4; fac++)
+        {
+            line.emplace_back(
+                point_t{ pos.x + fac * dir.x, pos.y + fac * dir.y }
+            );
         }
         return line;
     }
 
     std::vector<nara::gomoku_chess>
-    gen_chesses(gomoku_board const & board, std::vector<point_t> line) {
+    gen_chesses(gomoku_board const & board, std::vector<point_t> line)
+    {
         std::vector<nara::gomoku_chess> chesses;
-        for(auto & p : line) {
+        for(auto & p : line)
+        {
             if(board.getchess(p) != OUTBX)
                 chesses.push_back(board.getchess(p));
         }
         return chesses;
     }
 
-    choose_t gen_choose(gomoku_board const & board, point_t pos) {
+    choose_t gen_choose(gomoku_board const & board, point_t pos)
+    {
         assert(board.getchess(pos) == EMPTY);
         choose_t choose{pos, 0, 0, 0};
-        for(auto dir : directions) {
+        for(auto dir : directions)
+        {
             auto line = line_for_pos(pos, dir);
             auto chesses = gen_chesses(board, line);
             auto [rblk, rwht] = evaluate(chesses);
@@ -299,18 +312,20 @@ private:
         return choose;
     }
 
-    static bool with_score(choose_t choose) {
+    static bool with_score(choose_t choose)
+    {
         return choose.score_blk != 0 || choose.score_wht != 0;
     }
 
-    auto choose_generator(gomoku_board const & board) {
+    auto choose_generator(gomoku_board const & board)
+    {
         return [&](point_t pos){ return gen_choose(board, pos); };
     }
 
     std::tuple<point_t, int> alphabeta(
         score_board const & sboard, gomoku_chess next,
-        int alpha, int beta, bool ismax, int depth
-    ) {
+        int alpha, int beta, bool ismax, int depth)
+    {
         depth_cnt[depth]++;
 
         if(depth == 0) {
@@ -343,7 +358,8 @@ private:
 
         if(ismax) {
             int score = -10000000;
-            for(auto & choose : chooses) {
+            for(auto & choose : chooses)
+            {
 
                 auto[_ , _score] =
                     alphabeta(score_board(sboard, next, choose.pos), oppof(next), alpha, beta, false, depth - 1);
@@ -362,8 +378,8 @@ private:
 
         // ismin
         int score = 10000000;
-        for(auto & choose : chooses) {
-
+        for(auto & choose : chooses)
+        {
             auto[_ , _score] =
                 alphabeta(score_board(sboard, next, choose.pos), oppof(next), alpha, beta, true, depth - 1);
 
@@ -385,7 +401,8 @@ public:
 
     gomoku_ai(gomoku_chess chess): mine(chess) { init_candidates(); }
 
-    point_t getnext(gomoku_board const & board) {
+    point_t getnext(gomoku_board const & board)
+    {
         for(int i = 0; i < 4; i++)
             depth_cnt[i] = 0;
 

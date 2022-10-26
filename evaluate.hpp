@@ -8,6 +8,7 @@
 #include <string>
 #include <iostream>
 #include <algorithm>
+#include <unordered_set>
 
 #include "board.hpp"
 
@@ -24,7 +25,7 @@ struct pattern {
     pattern_type t;
 };
 
-std::vector<pattern> patterns{
+std::vector<pattern> patterns {
     {std::regex("OXXE"), SICK2},
     {std::regex("EXXO"), SICK2},
 
@@ -37,14 +38,6 @@ std::vector<pattern> patterns{
     {std::regex("EXXEXO"), SICK3},
     {std::regex("OXEXXE"), SICK3},
     {std::regex("EXEXXO"), SICK3},
-
-    // {std::regex("EXXXE"), FLEX3},
-    // {std::regex("EXXEXE"), FLEX3},
-    // {std::regex("EXEXXE"), FLEX3},
-
-    {std::regex("EXXXXO"), SICK4},
-    {std::regex("OXXXXE"), SICK4},
-    {std::regex("XXEXX"), SICK4},
 
     {std::regex("EXXXXE"), FLEX4},
 
@@ -94,6 +87,15 @@ int search_flex3(std::string const & line, std::vector<int> & to_flex4)
     return cnt;
 }
 
+int search_sick4(std::string const & line, std::vector<int> & to_five)
+{
+    int cnt = 0;
+    cnt += search_and_push(line, to_five, std::regex("EXXXXO"), {0});
+    cnt += search_and_push(line, to_five, std::regex("OXXXXE"), {5});
+    cnt += search_and_push(line, to_five, std::regex("XXEXX"), {2});
+    return cnt;
+}
+
 int search_all(std::string const & line, std::regex const & re)
 {
     std::string subject(line);
@@ -111,9 +113,13 @@ eval_result evaluate_wrap(std::string const & wrapped)
 {
     eval_result res;
 
-    int nmatch = search_flex3(wrapped, res.to_flex4);
-    res.pattern_cnt[FLEX3] += nmatch;
-    res.score += pattern_score[FLEX3] * nmatch;
+    int flex3_cnt = search_flex3(wrapped, res.to_flex4);
+    res.pattern_cnt[FLEX3] += flex3_cnt;
+    res.score += pattern_score[FLEX3] * flex3_cnt;
+
+    int sick4_cnt = search_sick4(wrapped, res.to_five);
+    res.pattern_cnt[SICK4] += sick4_cnt;
+    res.score += pattern_score[SICK4] * sick4_cnt;
 
     for(auto const & p : patterns)
     {
@@ -125,12 +131,25 @@ eval_result evaluate_wrap(std::string const & wrapped)
     return res;
 }
 
+void to_unique(std::vector<int> & vec)
+{
+    std::unordered_set<int> s;
+    for (int i : vec)
+        s.insert(i);
+    vec.assign(s.begin(), s.end());
+}
+
 eval_result evaluate(std::string const & line)
 {
     auto res = evaluate_wrap("O" + line + "O");
+
+    to_unique(res.to_flex4);
+    to_unique(res.to_five);
+
     auto dec = [](int & i){ i--; };
     std::ranges::for_each(res.to_flex4, dec);
     std::ranges::for_each(res.to_five, dec);
+
     return res;
 }
 
@@ -189,6 +208,11 @@ void debug_result(std::ostream & os, eval_result const & res)
 
     os << "to_flex4: ";
     for(auto i : res.to_flex4)
+        os << i << ' ';
+    os << '\n';
+
+    os << "to_five: ";
+    for(auto i : res.to_five)
         os << i << ' ';
     os << '\n';
 }
