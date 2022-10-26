@@ -33,7 +33,6 @@ auto evaluate_line(gomoku_board const & board, line_t line)
     point_t p = ori;
     while(!gomoku_board::outbox(p.x, p.y))
     {
-        char c;
         switch(board.getchess(p.x, p.y)) {
         case BLACK: chesses.push_back(nara::BLACK); break;
         case WHITE: chesses.push_back(nara::WHITE); break;
@@ -182,7 +181,7 @@ public:
         gomoku_chess next_chess,
         point_t next_pos)
     {
-        _board = prev_sboard._board;
+        _board = gomoku_board(prev_sboard._board);
         last_pos = next_pos;
 
         std::ranges::copy(
@@ -359,7 +358,7 @@ private:
         std::vector<nara::gomoku_chess> chesses;
         for(auto & p : line)
         {
-            if(board.getchess(p) != OUTBX)
+            if(!board.outbox(p))
                 chesses.push_back(board.getchess(p));
         }
         return chesses;
@@ -424,7 +423,8 @@ private:
         score_board const & sboard, gomoku_chess next,
         int alpha, int beta, bool ismax, int depth)
     {
-        depth_cnt[depth]++;
+        if(depth < 20)
+            depth_cnt[depth]++;
 
         if(depth == 0) {
             if(mine == BLACK)
@@ -478,13 +478,13 @@ private:
 
 public:
     // just for debug
-    int depth_cnt[4];
+    int depth_cnt[20];
 
     gomoku_ai(gomoku_chess chess): mine(chess) { init_candidates(); }
 
     point_t getnext(gomoku_board const & board)
     {
-        for(int i = 0; i < 4; i++)
+        for(int i = 0; i < 20; i++)
             depth_cnt[i] = 0;
 
         last_eval_times = 0;

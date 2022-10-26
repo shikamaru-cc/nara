@@ -29,10 +29,10 @@ void display(nara::gomoku_board const & board, cursor_t const & cursor) {
     move(0, 0);
     for(int i = 0; i < nara::gomoku_board::WIDTH; i++) {
         for(int j = 0; j < nara::gomoku_board::WIDTH; j++) {
-            switch (board.chesses[i][j]) {
-            case nara::EMPTY: printw("-"); break;
+            switch (board.getchess(i, j)) {
             case nara::BLACK: printw("X"); break;
             case nara::WHITE: printw("O"); break;
+            case nara::EMPTY: printw("-"); break;
             }
             printw(" ");
         }

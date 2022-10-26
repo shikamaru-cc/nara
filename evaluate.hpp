@@ -155,7 +155,6 @@ eval_result evaluate(std::string const & line)
 
 char chess2ch4black(gomoku_chess chess)
 {
-    assert(chess != OUTBX);
     switch(chess) {
     case BLACK: return 'X';
     case WHITE: return 'O';
@@ -165,7 +164,6 @@ char chess2ch4black(gomoku_chess chess)
 
 char chess2ch4white(gomoku_chess chess)
 {
-    assert(chess != OUTBX);
     switch(chess) {
     case WHITE: return 'X';
     case BLACK: return 'O';

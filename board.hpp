@@ -31,19 +31,20 @@ points_t mkline(point_t center, point_t dir) {
     return points;
 }
 
-enum gomoku_chess { EMPTY, OUTBX, BLACK, WHITE };
+enum gomoku_chess { EMPTY, BLACK, WHITE };
 
 gomoku_chess oppof(gomoku_chess chess) {
-    // assert(chess == BLACK || chess == WHITE);
+    assert(chess == BLACK || chess == WHITE);
     return chess == BLACK ? WHITE : BLACK;
 }
 
 class gomoku_board {
+private:
+    static const int _WIDTH = 15;
+    volatile gomoku_chess chesses[_WIDTH][_WIDTH];
+
 public:
     static const int WIDTH = 15;
-
-    gomoku_chess chesses[WIDTH][WIDTH];
-
     int winner;
 
     gomoku_board() {
@@ -51,6 +52,15 @@ public:
         for(int i = 0; i < WIDTH; i++) {
             for(int j = 0; j < WIDTH; j++) {
                 chesses[i][j] = EMPTY;
+            }
+        }
+    }
+
+    gomoku_board(gomoku_board const & board) {
+        winner = board.winner;
+        for(int i = 0; i < WIDTH; i++) {
+            for(int j = 0; j < WIDTH; j++) {
+                chesses[i][j] = board.chesses[i][j];
             }
         }
     }
@@ -64,7 +74,8 @@ public:
     }
 
     gomoku_chess getchess(int x, int y) const {
-        return outbox(x, y) ? OUTBX : chesses[x][y];
+        assert(!outbox(x, y));
+        return chesses[x][y];
     }
 
     gomoku_chess getchess(point_t pos) const {
@@ -72,8 +83,7 @@ public:
     }
 
     void setchess(int x, int y, gomoku_chess chess) {
-        assert(x >= 0 && x < WIDTH);
-        assert(y >= 0 && y < WIDTH);
+        assert(!outbox(x, y));
         chesses[x][y] = chess;
     }
 
