@@ -203,11 +203,6 @@ public:
     }
 };
 
-auto is_empty_at(score_board const & sboard)
-{
-    return [&](point_t pos) { return sboard.getchess(pos) == EMPTY; };
-}
-
 class gomoku_ai {
 private:
     // my chess
@@ -249,16 +244,22 @@ private:
     };
 
     std::vector<point_t>
-    line_for_pos(point_t pos, point_t dir)
+    line_for_pos(point_t pos, point_t dir, int max_fac)
     {
         std::vector<point_t> line;
-        for(int fac = -4; fac <= 4; fac++)
+        for(int fac = -max_fac; fac <= max_fac; fac++)
         {
             line.emplace_back(
                 point_t{ pos.x + fac * dir.x, pos.y + fac * dir.y }
             );
         }
         return line;
+    }
+
+    std::vector<point_t>
+    line_for_pos(point_t pos, point_t dir)
+    {
+        return line_for_pos(pos, dir, 4);
     }
 
     std::vector<nara::gomoku_chess>
@@ -302,6 +303,27 @@ private:
         return [&](point_t pos){ return gen_choose(board, pos); };
     }
 
+    auto is_empty_at(score_board const & sboard)
+    {
+        return [&](point_t pos) { return sboard.getchess(pos) == EMPTY; };
+    }
+
+    auto has_neigh_at(score_board const & sboard)
+    {
+        return [&](point_t pos) {
+            for(auto dir : directions)
+            {
+                auto line = line_for_pos(pos, dir, 2);
+                for(auto p : line)
+                {
+                    if (gomoku_board::outbox(p)) continue;
+                    if (sboard.getchess(p) != EMPTY) return true;
+                }
+            }
+            return false;
+        };
+    }
+
     std::vector<choose_t>
     gen_chooses(score_board const & sboard, gomoku_chess next)
     {
@@ -309,7 +331,7 @@ private:
 
         auto choose_transformer = choose_generator(sboard._board);
 
-        // fast choose
+        // fast choose path
 
         auto my_to_five = sboard.to_five_points(next);
         if (!my_to_five.empty()) {
@@ -333,11 +355,12 @@ private:
         // auto opp_to_flex4 = sboard.to_flex4_points(oppof(next));
 
         // search and sort chooses
+
         std::ranges::copy(
             candidates |
             std::views::filter(is_empty_at(sboard)) |
-            std::views::transform(choose_transformer) |
-            std::views::filter(with_score),
+            std::views::filter(has_neigh_at(sboard)) |
+            std::views::transform(choose_transformer),
             std::back_inserter(chooses)
         );
 

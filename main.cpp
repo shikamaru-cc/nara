@@ -192,7 +192,7 @@ int main() {
         turn = nara::oppof(turn);
     }
 
-    move(20, 0);
+    move(15, 0);
     if (sboard.winner() == nara::BLACK)
         printw("Black win!");
     else
