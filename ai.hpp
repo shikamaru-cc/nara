@@ -12,111 +12,6 @@
 
 namespace nara {
 
-struct line_t {
-    point_t ori;
-    point_t dir;
-};
-
-// for debug
-static int last_eval_times;
-
-auto evaluate_line(gomoku_board const & board, line_t line)
-{
-    last_eval_times++;
-
-    // auto start = std::chrono::system_clock::now();
-
-    std::vector<nara::gomoku_chess> chesses;
-
-    point_t ori= line.ori;
-    point_t dir = line.dir;
-    point_t p = ori;
-    while(!gomoku_board::outbox(p.x, p.y))
-    {
-        switch(board.getchess(p.x, p.y)) {
-        case BLACK: chesses.push_back(nara::BLACK); break;
-        case WHITE: chesses.push_back(nara::WHITE); break;
-        case EMPTY: chesses.push_back(nara::EMPTY); break;
-        }
-        p = {p.x + dir.x, p.y + dir.y};
-    }
-
-    /*
-    auto end = std::chrono::system_clock::now();
-    logger << "evaluate_line use "
-           << std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
-           << "\n";
-    logger.flush();
-    */
-
-    return nara::evaluate(chesses);
-}
-
-std::vector<line_t> all_lines;
-
-void gen_lines()
-{
-    point_t origin, dir;
-
-    // line '-'
-    dir = {0, 1};
-    for(int i = 0; i < gomoku_board::WIDTH; i++)
-    {
-        origin = {i, 0};
-        all_lines.push_back(line_t{origin, dir});
-    }
-
-    // line '|'
-    dir = {1, 0};
-    for(int i = 0; i < gomoku_board::WIDTH; i++)
-    {
-        origin = {0, i};
-        all_lines.push_back(line_t{origin, dir});
-    }
-
-    // line '/'
-    dir = {-1, 1};
-    for(int i = 0; i < gomoku_board::WIDTH; i++)
-    {
-        origin = {i, 0};
-        all_lines.push_back(line_t{origin, dir});
-    }
-    // i == 1 here to avoid re-eval origin {0, 0}
-    for(int i = 1; i < gomoku_board::WIDTH; i++)
-    {
-        origin = {14, i};
-        all_lines.push_back(line_t{origin, dir});
-    }
-
-    // line '\'
-    dir = {1, 1};
-    for(int i = 0; i < gomoku_board::WIDTH; i++)
-    {
-        origin = {i, 0};
-        all_lines.push_back(line_t{origin, dir});
-    }
-    // i == 1 here to avoid re-eval origin {0, 0}
-    for(int i = 1; i < gomoku_board::WIDTH; i++)
-    {
-        origin = {14, i};
-        all_lines.push_back(line_t{origin, dir});
-    }
-}
-
-auto evaluate_board(gomoku_board const & board)
-{
-    if(all_lines.empty()) gen_lines();
-
-    std::vector<nara::eval_result> results_blk;
-    std::vector<nara::eval_result> results_wht;
-    for(auto line : all_lines) {
-        auto [res_blk, res_wht] = evaluate_line(board, line);
-        results_blk.push_back(std::move(res_blk));
-        results_wht.push_back(std::move(res_wht));
-    }
-    return std::make_tuple(results_blk, results_wht);
-}
-
 struct score_board {
 private:
     // ori.x ori.y dir
@@ -128,7 +23,7 @@ private:
     int _total_blk;
     int _total_wht;
 
-    int idx_of_dir(point_t dir)
+    int idx_of_dir(point_t dir) const
     {
         if(dir == point_t{0, 1}) return 0;
         if(dir == point_t{1, 0}) return 1;
@@ -197,8 +92,13 @@ public:
         _total_blk = prev_sboard._total_blk;
         _total_wht = prev_sboard._total_wht;
 
-        _board.setchess(next_pos, next_chess);
+        setchess(next_pos, next_chess);
+    }
 
+    void setchess(point_t next_pos, gomoku_chess next_chess)
+    {
+        last_pos = next_pos;
+        _board.setchess(next_pos, next_chess);
         for(auto & line : lines_contain_pos(next_pos))
         {
             _total_blk -=
@@ -221,14 +121,14 @@ public:
         return _board.getchess(pos);
     }
 
-    eval_result line_result(gomoku_chess chess, point_t ori, point_t dir)
+    eval_result line_result(gomoku_chess chess, point_t ori, point_t dir) const
     {
         return (chess == BLACK)
             ? _score_blk[ori.x][ori.y][idx_of_dir(dir)]
             : _score_wht[ori.x][ori.y][idx_of_dir(dir)];
     }
 
-    eval_result line_result(gomoku_chess chess, line_t line)
+    eval_result line_result(gomoku_chess chess, line_t line) const
     {
         return line_result(chess, line.ori, line.dir);
     }
@@ -241,7 +141,16 @@ public:
     int score_blk() const { return _total_blk - _total_wht; }
     int score_wht() const { return _total_wht - _total_blk; }
 
-    std::vector<point_t> to_five_points(gomoku_chess chess)
+    gomoku_chess winner() const
+    {
+        if (_total_blk >= pattern_score[FLEX5])
+            return BLACK;
+        else if (_total_wht >= pattern_score[FLEX5])
+            return WHITE;
+        return EMPTY;
+    }
+
+    std::vector<point_t> to_five_points(gomoku_chess chess) const
     {
         std::vector<point_t> ret;
         auto & res = (chess == BLACK) ? _score_blk : _score_wht;
@@ -258,7 +167,7 @@ public:
         return ret;
     }
 
-    std::vector<point_t> to_flex4_points(gomoku_chess chess)
+    std::vector<point_t> to_flex4_points(gomoku_chess chess) const
     {
         std::vector<point_t> ret;
         auto & res = (chess == BLACK) ? _score_blk : _score_wht;
@@ -275,7 +184,7 @@ public:
         return ret;
     }
 
-    std::tuple<eval_result, eval_result> summary()
+    std::tuple<eval_result, eval_result> summary() const
     {
         eval_result blk, wht;
         for(auto line : all_lines)
@@ -323,7 +232,7 @@ private:
     {
         for(int i = 0; i < gomoku_board::WIDTH; i++)
             for(int j = 0; j < gomoku_board::WIDTH; j++)
-                candidates.push_back({i, j});
+                candidates.emplace_back(point_t{i, j});
 
         auto compare_priority = [&](point_t p1, point_t p2){
             return prior_of(p1) > prior_of(p2);
@@ -358,7 +267,7 @@ private:
         std::vector<nara::gomoku_chess> chesses;
         for(auto & p : line)
         {
-            if(!board.outbox(p))
+            if (!board.outbox(p))
                 chesses.push_back(board.getchess(p));
         }
         return chesses;
@@ -398,19 +307,45 @@ private:
     {
         std::vector<choose_t> chooses;
 
+        auto choose_transformer = choose_generator(sboard._board);
+
+        // fast choose
+
+        auto my_to_five = sboard.to_five_points(next);
+        if (!my_to_five.empty()) {
+            std::ranges::copy(
+                my_to_five | std::views::transform(choose_transformer),
+                std::back_inserter(chooses)
+            );
+            return chooses;
+        }
+
+        auto opp_to_five = sboard.to_five_points(oppof(next));
+        if (!opp_to_five.empty()) {
+            std::ranges::copy(
+                opp_to_five | std::views::transform(choose_transformer),
+                std::back_inserter(chooses)
+            );
+            return chooses;
+        }
+
+        // auto my_to_flex4  = sboard.to_flex4_points(next);
+        // auto opp_to_flex4 = sboard.to_flex4_points(oppof(next));
+
+        // search and sort chooses
         std::ranges::copy(
             candidates |
             std::views::filter(is_empty_at(sboard)) |
-            std::views::transform(choose_generator(sboard._board)) |
+            std::views::transform(choose_transformer) |
             std::views::filter(with_score),
             std::back_inserter(chooses)
         );
 
-        if(chooses.empty()) {
+        if (chooses.empty()) {
             std::ranges::copy(
                 candidates |
                 std::views::filter(is_empty_at(sboard)) |
-                std::views::transform(choose_generator(sboard._board)) |
+                std::views::transform(choose_transformer) |
                 std::views::take(9),
                 std::back_inserter(chooses)
             );
@@ -423,10 +358,10 @@ private:
         score_board const & sboard, gomoku_chess next,
         int alpha, int beta, bool ismax, int depth)
     {
-        if(depth < 20)
+        if (depth < 20)
             depth_cnt[depth]++;
 
-        if(depth == 0) {
+        if (depth == 0) {
             if(mine == BLACK)
                 return std::make_tuple(sboard.last_pos, sboard.score_blk());
             else
@@ -435,15 +370,27 @@ private:
 
         auto chooses = gen_chooses(sboard, next);
 
+        if (depth == 4) {
+            for (auto & choose : chooses)
+            {
+                logger << choose.pos << " ";
+            }
+            logger << "\n";
+            logger.flush();
+        }
+
         point_t bestpos;
 
         if(ismax) {
             int score = -10000000;
             for(auto & choose : chooses)
             {
+                auto next_sboard = score_board(sboard, next, choose.pos);
+                if (next_sboard.winner() == next)
+                    return std::make_tuple(choose.pos, score_win);
 
                 auto[_ , _score] =
-                    alphabeta(score_board(sboard, next, choose.pos), oppof(next), alpha, beta, false, depth - 1);
+                    alphabeta(next_sboard, oppof(next), alpha, beta, false, depth - 1);
 
                 if(_score > score)
                     bestpos = choose.pos;
@@ -461,8 +408,12 @@ private:
         int score = 10000000;
         for(auto & choose : chooses)
         {
+            auto next_sboard = score_board(sboard, next, choose.pos);
+            if (next_sboard.winner() == next)
+                return std::make_tuple(choose.pos, -score_win);
+
             auto[_ , _score] =
-                alphabeta(score_board(sboard, next, choose.pos), oppof(next), alpha, beta, true, depth - 1);
+                alphabeta(next_sboard, oppof(next), alpha, beta, true, depth - 1);
 
             if(_score < score)
                 bestpos = choose.pos;

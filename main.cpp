@@ -23,7 +23,11 @@ struct cursor_t {
     void goright(void) { if(y < nara::gomoku_board::WIDTH - 1) y++; }
 };
 
-void display(nara::gomoku_board const & board, cursor_t const & cursor) {
+void display(
+    nara::gomoku_board const & board,
+    nara::score_board const & sboard,
+    cursor_t const & cursor)
+{
     clear();
 
     move(0, 0);
@@ -40,7 +44,6 @@ void display(nara::gomoku_board const & board, cursor_t const & cursor) {
     }
 
     move(16, 0);
-    auto sboard = nara::score_board(board);
     auto [res_blk, res_wht] = sboard.summary();
 
     printw("result score: %d\n", sboard.total_score(nara::BLACK));
@@ -118,42 +121,13 @@ gomoku_action getaction(void) {
     }
 }
 
-bool applyaction(
-    cursor_t & cursor,
-    nara::gomoku_board & board,
-    gomoku_action action,
-    nara::gomoku_chess chess
-) {
-    switch (action) {
-    case UP:
-        cursor.goup();
-        break;
-    case DOWN:
-        cursor.godown();
-        break;
-    case LEFT:
-        cursor.goleft();
-        break;
-    case RIGHT:
-        cursor.goright();
-        break;
-    case CHOOSE:
-        if(board.getchess(cursor.x, cursor.y) == nara::EMPTY) {
-            board.setchess_and_test(cursor.x, cursor.y, chess);
-            return true;
-        }
-    default:
-        {}
-    }
-    return false;
-}
-
 int main() {
     logger.open("LOG");
 
     nara::gen_lines();
 
     nara::gomoku_board board = nara::gomoku_board();
+    nara::score_board sboard = nara::score_board(board);
     cursor_t cursor;
 
     // ai mode
@@ -172,10 +146,10 @@ int main() {
     nara::gomoku_ai ai = nara::gomoku_ai(ai_chess);
 
     initscr();
-    display(board, cursor);
+    display(board, sboard, cursor);
 
     nara::gomoku_chess turn = nara::BLACK;
-    while(board.winner == 0)
+    while(sboard.winner() == nara::EMPTY)
     {
         if(turn == ai_chess) {
             nara::point_t ai_next;
@@ -185,25 +159,41 @@ int main() {
             if(board.getchess(ai_next) != nara::EMPTY)
                 assert(false);
 
-            board.setchess_and_test(ai_next.x, ai_next.y, ai_chess);
+            board.setchess(ai_next, ai_chess);
+            sboard.setchess(ai_next, ai_chess);
             cursor.set(ai_next.x, ai_next.y);
+
         } else { // player turn
-            for(;;) {
+            for(;;)
+            {
                 gomoku_action action = getaction();
-                if(action == QUIT)
+                if (action == QUIT)
                     goto quit;
-                if(applyaction(cursor, board, action, my_chess))
-                    break;
-                display(board, cursor);
+                if (action == CHOOSE) {
+                    if (board.getchess(cursor.x, cursor.y) == nara::EMPTY) {
+                        board.setchess(cursor.x, cursor.y, my_chess);
+                        sboard.setchess({cursor.x, cursor.y}, my_chess);
+                        break;
+                    } else {
+                        continue;
+                    }
+                }
+                switch (action) {
+                case UP:    cursor.goup(); break;
+                case DOWN:  cursor.godown(); break;
+                case LEFT:  cursor.goleft(); break;
+                case RIGHT: cursor.goright(); break;
+                default: {}
+                }
+                display(board, sboard, cursor);
             }
         }
-        display(board, cursor);
+        display(board, sboard, cursor);
         turn = nara::oppof(turn);
     }
 
-    display(board, cursor);
     move(20, 0);
-    if(board.winner == 1)
+    if (sboard.winner() == nara::BLACK)
         printw("Black win!");
     else
         printw("White win!");

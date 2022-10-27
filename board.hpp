@@ -2,6 +2,10 @@
 
 #include <cassert>
 #include <vector>
+#include <iostream>
+
+#define BOOST_STACKTRACE_USE_ADDR2LINE
+#include <boost/stacktrace.hpp>
 
 namespace nara {
 
@@ -10,6 +14,11 @@ struct point_t {
     int y;
     point_t(int _x = 0, int _y = 0): x(_x), y(_y) {}
 };
+
+std::ostream & operator << (std::ostream & os, point_t p)
+{
+    return os << "[" << p.x << ", " << p.y << "]";
+}
 
 const point_t directions[4] = {
     point_t{1, 0}, point_t{1, 1}, point_t{0, 1}, point_t{-1, 1}
@@ -74,7 +83,12 @@ public:
     }
 
     gomoku_chess getchess(int x, int y) const {
-        assert(!outbox(x, y));
+        if (outbox(x, y)) {
+            logger << boost::stacktrace::stacktrace() << std::endl;
+            logger.flush();
+            assert(false);
+        }
+        // assert(!outbox(x, y));
         return chesses[x][y];
     }
 

@@ -14,11 +14,69 @@
 
 namespace nara {
 
+struct line_t {
+    point_t ori;
+    point_t dir;
+};
+
+std::vector<line_t> all_lines;
+
+void gen_lines()
+{
+    point_t origin, dir;
+
+    // line '-'
+    dir = {0, 1};
+    for(int i = 0; i < gomoku_board::WIDTH; i++)
+    {
+        origin = {i, 0};
+        all_lines.push_back(line_t{origin, dir});
+    }
+
+    // line '|'
+    dir = {1, 0};
+    for(int i = 0; i < gomoku_board::WIDTH; i++)
+    {
+        origin = {0, i};
+        all_lines.push_back(line_t{origin, dir});
+    }
+
+    // line '/'
+    dir = {-1, 1};
+    for(int i = 0; i < gomoku_board::WIDTH; i++)
+    {
+        origin = {i, 0};
+        all_lines.push_back(line_t{origin, dir});
+    }
+    // i == 1 here to avoid re-eval origin {0, 0}
+    for(int i = 1; i < gomoku_board::WIDTH; i++)
+    {
+        origin = {14, i};
+        all_lines.push_back(line_t{origin, dir});
+    }
+
+    // line '\'
+    dir = {1, 1};
+    for(int i = 0; i < gomoku_board::WIDTH; i++)
+    {
+        origin = {i, 0};
+        all_lines.push_back(line_t{origin, dir});
+    }
+    // i == 1 here to avoid re-eval origin {0, 0}
+    for(int i = 1; i < gomoku_board::WIDTH; i++)
+    {
+        origin = {14, i};
+        all_lines.push_back(line_t{origin, dir});
+    }
+}
+
 enum pattern_type { SICK2 = 0, FLEX2, SICK3, FLEX3, SICK4, FLEX4, FLEX5 };
 
-const static int pattern_score[7] = {
-    10, 100, 100, 1000, 1000, 10000, 100000
+static constexpr int pattern_score[7] = {
+    10, 100, 100, 1000, 1000, 10000, 1000000
 };
+
+constexpr int score_win = pattern_score[FLEX5];
 
 struct pattern {
     std::regex re;
@@ -213,6 +271,55 @@ void debug_result(std::ostream & os, eval_result const & res)
     for(auto i : res.to_five)
         os << i << ' ';
     os << '\n';
+}
+
+// for debug
+static int last_eval_times;
+
+auto evaluate_line(gomoku_board const & board, line_t line)
+{
+    last_eval_times++;
+
+    // auto start = std::chrono::system_clock::now();
+
+    std::vector<nara::gomoku_chess> chesses;
+
+    point_t ori= line.ori;
+    point_t dir = line.dir;
+    point_t p = ori;
+    while(!gomoku_board::outbox(p.x, p.y))
+    {
+        switch(board.getchess(p.x, p.y)) {
+        case BLACK: chesses.push_back(nara::BLACK); break;
+        case WHITE: chesses.push_back(nara::WHITE); break;
+        case EMPTY: chesses.push_back(nara::EMPTY); break;
+        }
+        p = {p.x + dir.x, p.y + dir.y};
+    }
+
+    /*
+    auto end = std::chrono::system_clock::now();
+    logger << "evaluate_line use "
+           << std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+           << "\n";
+    logger.flush();
+    */
+
+    return nara::evaluate(chesses);
+}
+
+auto evaluate_board(gomoku_board const & board)
+{
+    if(all_lines.empty()) gen_lines();
+
+    std::vector<nara::eval_result> results_blk;
+    std::vector<nara::eval_result> results_wht;
+    for(auto line : all_lines) {
+        auto [res_blk, res_wht] = evaluate_line(board, line);
+        results_blk.push_back(std::move(res_blk));
+        results_wht.push_back(std::move(res_wht));
+    }
+    return std::make_tuple(results_blk, results_wht);
 }
 
 } // namespace nara
