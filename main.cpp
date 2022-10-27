@@ -59,7 +59,6 @@ void display(
     {
         printw("[%d, %d] ", p.x, p.y);
     }
-    printw("\n");
     printw("to FIVE: ");
     for(auto p : sboard.to_five_points(nara::BLACK))
     {

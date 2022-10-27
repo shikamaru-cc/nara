@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "log.hpp"
+#include "debug.hpp"
 #include "bench.hpp"
 #include "board.hpp"
 #include "evaluate.hpp"
@@ -150,14 +151,15 @@ public:
         return EMPTY;
     }
 
-    std::vector<point_t> to_five_points(gomoku_chess chess) const
+    template <typename VP>
+    std::vector<point_t> get_to_points(gomoku_chess chess, VP vp) const
     {
         std::vector<point_t> ret;
         auto & res = (chess == BLACK) ? _score_blk : _score_wht;
         for(auto line : all_lines)
         {
             auto idxs =
-                res[line.ori.x][line.ori.y][idx_of_dir(line.dir)].to_five;
+                res[line.ori.x][line.ori.y][idx_of_dir(line.dir)].*vp;
             for(int i : idxs)
                 ret.emplace_back(point_t{
                     line.ori.x + i * line.dir.x,
@@ -167,21 +169,19 @@ public:
         return ret;
     }
 
+    std::vector<point_t> to_sick4_points(gomoku_chess chess) const
+    {
+        return get_to_points(chess, &eval_result::to_sick4);
+    }
+
     std::vector<point_t> to_flex4_points(gomoku_chess chess) const
     {
-        std::vector<point_t> ret;
-        auto & res = (chess == BLACK) ? _score_blk : _score_wht;
-        for(auto line : all_lines)
-        {
-            auto idxs =
-                res[line.ori.x][line.ori.y][idx_of_dir(line.dir)].to_flex4;
-            for(int i : idxs)
-                ret.emplace_back(point_t{
-                    line.ori.x + i * line.dir.x,
-                    line.ori.y + i * line.dir.y
-                });
-        }
-        return ret;
+        return get_to_points(chess, &eval_result::to_flex4);
+    }
+
+    std::vector<point_t> to_five_points(gomoku_chess chess) const
+    {
+        return get_to_points(chess, &eval_result::to_five);
     }
 
     std::tuple<eval_result, eval_result> summary() const
@@ -202,6 +202,82 @@ public:
         return std::make_tuple(blk, wht);
     }
 };
+
+void debug_display(gomoku_board const & board, score_board const & sboard)
+{
+    logger << "======================" << std::endl;
+    for(int i = 0; i < gomoku_board::WIDTH; i++)
+    {
+        for(int j = 0; j < gomoku_board::WIDTH; j++)
+        {
+            switch (board.getchess(i, j)) {
+            case BLACK: logger << "X"; break;
+            case WHITE: logger << "O"; break;
+            case EMPTY: logger << "-"; break;
+            }
+            logger << " ";
+        }
+        logger << std::endl;
+    }
+
+    auto [res_blk, res_wht] = sboard.summary();
+
+    logger << "result score: "<< sboard.total_score(BLACK);
+    logger << "SICK2: "<< res_blk.pattern_cnt[SICK2];
+    logger << "FLEX2: "<< res_blk.pattern_cnt[FLEX2];
+    logger << "SICK3: "<< res_blk.pattern_cnt[SICK3];
+    logger << "FLEX3: "<< res_blk.pattern_cnt[FLEX3];
+    logger << "SICK4: "<< res_blk.pattern_cnt[SICK4];
+    logger << "FLEX4: "<< res_blk.pattern_cnt[FLEX4];
+    logger << "FLEX5: "<< res_blk.pattern_cnt[FLEX5];
+    logger << "to SICK4: ";
+    for(auto p : sboard.to_sick4_points(BLACK))
+    {
+        logger << p << " ";
+    }
+    logger << "to FLEX4: ";
+    for(auto p : sboard.to_flex4_points(BLACK))
+    {
+        logger << p << " ";
+    }
+    logger << "to FIVE: ";
+    for(auto p : sboard.to_five_points(BLACK))
+    {
+        logger << p << " ";
+    }
+    logger << std::endl;
+
+    logger << "result score: "<< sboard.total_score(WHITE);
+    logger << "SICK2: "<< res_wht.pattern_cnt[SICK2];
+    logger << "FLEX2: "<< res_wht.pattern_cnt[FLEX2];
+    logger << "SICK3: "<< res_wht.pattern_cnt[SICK3];
+    logger << "FLEX3: "<< res_wht.pattern_cnt[FLEX3];
+    logger << "SICK4: "<< res_wht.pattern_cnt[SICK4];
+    logger << "FLEX4: "<< res_wht.pattern_cnt[FLEX4];
+    logger << "FLEX5: "<< res_wht.pattern_cnt[FLEX5];
+    logger << "to SICK4: ";
+    for(auto p : sboard.to_sick4_points(BLACK))
+    {
+        logger << p << " ";
+    }
+    logger << "to FLEX4: ";
+    logger << std::endl;
+    for(auto p : sboard.to_flex4_points(WHITE))
+    {
+        logger << p << " ";
+    }
+    logger << std::endl;
+    logger << "to FIVE: ";
+    for(auto p : sboard.to_five_points(WHITE))
+    {
+        logger << p << " ";
+    }
+    logger << std::endl;
+
+    logger << "======================" << std::endl;
+
+    logger.flush();
+}
 
 class gomoku_ai {
 private:
@@ -351,8 +427,28 @@ private:
             return chooses;
         }
 
-        // auto my_to_flex4  = sboard.to_flex4_points(next);
-        // auto opp_to_flex4 = sboard.to_flex4_points(oppof(next));
+        auto my_to_flex4  = sboard.to_flex4_points(next);
+        auto opp_to_flex4 = sboard.to_flex4_points(oppof(next));
+
+        if (!my_to_flex4.empty()) {
+            std::ranges::copy(
+                my_to_flex4 | std::views::transform(choose_transformer),
+                std::back_inserter(chooses)
+            );
+            return chooses;
+        }
+
+        if (!opp_to_flex4.empty()) {
+            // debug_display(sboard._board, sboard);
+            auto my_to_sick4 = sboard.to_sick4_points(next);
+            std::vector<std::vector<point_t>> v{ opp_to_flex4, my_to_sick4 };
+            std::ranges::copy(
+                std::ranges::join_view(v) |
+                std::views::transform(choose_transformer),
+                std::back_inserter(chooses)
+            );
+            if (!chooses.empty()) return chooses;
+        }
 
         // search and sort chooses
 

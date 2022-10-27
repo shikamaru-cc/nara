@@ -97,8 +97,6 @@ std::vector<pattern> patterns {
     {std::regex("OXEXXE"), SICK3},
     {std::regex("EXEXXO"), SICK3},
 
-    {std::regex("EXXXXE"), FLEX4},
-
     {std::regex("XXXXX"), FLEX5},
 };
 
@@ -106,10 +104,17 @@ struct eval_result {
     int pattern_cnt[7];
     int score;
 
-    std::vector<int> to_five;
+    std::vector<int> to_sick4;
     std::vector<int> to_flex4;
+    std::vector<int> to_five;
 
     eval_result(): pattern_cnt({0}), score(0) {}
+
+    void add(pattern_type pt, int n)
+    {
+        pattern_cnt[pt] += n;
+        score += n * pattern_score[pt];
+    }
 };
 
 int search_and_push(
@@ -136,6 +141,18 @@ int search_and_push(
     return cnt;
 }
 
+int search_sick3(std::string const & line, std::vector<int> & to_sick4)
+{
+    int cnt = 0;
+    cnt += search_and_push(line, to_sick4, std::regex("EXXXO"), {0});
+    cnt += search_and_push(line, to_sick4, std::regex("OXXXE"), {4});
+    cnt += search_and_push(line, to_sick4, std::regex("OXXEXE"), {3, 5});
+    cnt += search_and_push(line, to_sick4, std::regex("EXXEXO"), {0, 3});
+    cnt += search_and_push(line, to_sick4, std::regex("OXEXXE"), {2, 5});
+    cnt += search_and_push(line, to_sick4, std::regex("EXEXXO"), {0, 2});
+    return cnt;
+}
+
 int search_flex3(std::string const & line, std::vector<int> & to_flex4)
 {
     int cnt = 0;
@@ -152,6 +169,11 @@ int search_sick4(std::string const & line, std::vector<int> & to_five)
     cnt += search_and_push(line, to_five, std::regex("OXXXXE"), {5});
     cnt += search_and_push(line, to_five, std::regex("XXEXX"), {2});
     return cnt;
+}
+
+int search_flex4(std::string const & line, std::vector<int> & to_five)
+{
+    return search_and_push(line, to_five, std::regex("EXXXXE"), {0, 5});
 }
 
 int search_all(std::string const & line, std::regex const & re)
@@ -171,20 +193,13 @@ eval_result evaluate_wrap(std::string const & wrapped)
 {
     eval_result res;
 
-    int flex3_cnt = search_flex3(wrapped, res.to_flex4);
-    res.pattern_cnt[FLEX3] += flex3_cnt;
-    res.score += pattern_score[FLEX3] * flex3_cnt;
-
-    int sick4_cnt = search_sick4(wrapped, res.to_five);
-    res.pattern_cnt[SICK4] += sick4_cnt;
-    res.score += pattern_score[SICK4] * sick4_cnt;
+    res.add(SICK3, search_sick3(wrapped, res.to_sick4));
+    res.add(FLEX3, search_flex3(wrapped, res.to_flex4));
+    res.add(SICK4, search_sick4(wrapped, res.to_five));
+    res.add(FLEX4, search_flex4(wrapped, res.to_five));
 
     for(auto const & p : patterns)
-    {
-        int nmatch = search_all(wrapped, p.re);
-        res.pattern_cnt[p.t] += nmatch;
-        res.score += pattern_score[p.t] * nmatch;
-    }
+        res.add(p.t, search_all(wrapped, p.re));
 
     return res;
 }
@@ -205,6 +220,7 @@ eval_result evaluate(std::string const & line)
     to_unique(res.to_five);
 
     auto dec = [](int & i){ i--; };
+    std::ranges::for_each(res.to_sick4, dec);
     std::ranges::for_each(res.to_flex4, dec);
     std::ranges::for_each(res.to_five, dec);
 
