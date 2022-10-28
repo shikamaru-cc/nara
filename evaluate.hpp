@@ -19,6 +19,11 @@ struct line_t {
     point_t dir;
 };
 
+bool operator == (const line_t l1, const line_t l2)
+{
+    return l1.ori == l2.ori && l1.dir == l2.dir;
+}
+
 std::vector<line_t> all_lines;
 
 void gen_lines()
@@ -178,11 +183,15 @@ int search_sick4(std::string const & line, std::vector<int> & to_five)
     static const auto EXXXXO = std::regex("EXXXXO");
     static const auto OXXXXE = std::regex("OXXXXE");
     static const auto XXEXX = std::regex("XXEXX");
+    static const auto XXXEX = std::regex("XXXEX");
+    static const auto XEXXX = std::regex("XEXXX");
 
     int cnt = 0;
     cnt += search_and_push(line, to_five, EXXXXO, {0});
     cnt += search_and_push(line, to_five, OXXXXE, {5});
     cnt += search_and_push(line, to_five, XXEXX, {2});
+    cnt += search_and_push(line, to_five, XXXEX, {3});
+    cnt += search_and_push(line, to_five, XEXXX, {1});
     return cnt;
 }
 
