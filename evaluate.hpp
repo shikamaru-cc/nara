@@ -120,7 +120,7 @@ struct eval_result {
 int search_and_push(
     std::string const & line,
     std::vector<int> & to_push,
-    std::regex re,
+    std::regex const & re,
     std::vector<int> const & idxs)
 {
     int si = 0;
@@ -143,31 +143,46 @@ int search_and_push(
 
 int search_sick3(std::string const & line, std::vector<int> & to_sick4)
 {
+    static const auto EXXXO = std::regex("EXXXO");
+    static const auto OXXXE = std::regex("OXXXE");
+    static const auto OXXEXE = std::regex("OXXEXE");
+    static const auto EXXEXO = std::regex("EXXEXO");
+    static const auto OXEXXE = std::regex("OXEXXE");
+    static const auto EXEXXO = std::regex("EXEXXO");
+
     int cnt = 0;
-    cnt += search_and_push(line, to_sick4, std::regex("EXXXO"), {0});
-    cnt += search_and_push(line, to_sick4, std::regex("OXXXE"), {4});
-    cnt += search_and_push(line, to_sick4, std::regex("OXXEXE"), {3, 5});
-    cnt += search_and_push(line, to_sick4, std::regex("EXXEXO"), {0, 3});
-    cnt += search_and_push(line, to_sick4, std::regex("OXEXXE"), {2, 5});
-    cnt += search_and_push(line, to_sick4, std::regex("EXEXXO"), {0, 2});
+    cnt += search_and_push(line, to_sick4, EXXXO, {0});
+    cnt += search_and_push(line, to_sick4, OXXXE, {4});
+    cnt += search_and_push(line, to_sick4, OXXEXE, {3, 5});
+    cnt += search_and_push(line, to_sick4, EXXEXO, {0, 3});
+    cnt += search_and_push(line, to_sick4, OXEXXE, {2, 5});
+    cnt += search_and_push(line, to_sick4, EXEXXO, {0, 2});
     return cnt;
 }
 
 int search_flex3(std::string const & line, std::vector<int> & to_flex4)
 {
+    static const auto EXXXE = std::regex("EXXXE");
+    static const auto EXXEXE = std::regex("EXXEXE");
+    static const auto EXEXXE = std::regex("EXEXXE");
+
     int cnt = 0;
-    cnt += search_and_push(line, to_flex4, std::regex("EXXXE"), {0, 4});
-    cnt += search_and_push(line, to_flex4, std::regex("EXXEXE"), {0, 3, 5});
-    cnt += search_and_push(line, to_flex4, std::regex("EXEXXE"), {0, 2, 5});
+    cnt += search_and_push(line, to_flex4, EXXXE, {0, 4});
+    cnt += search_and_push(line, to_flex4, EXXEXE, {0, 3, 5});
+    cnt += search_and_push(line, to_flex4, EXEXXE, {0, 2, 5});
     return cnt;
 }
 
 int search_sick4(std::string const & line, std::vector<int> & to_five)
 {
+    static const auto EXXXXO = std::regex("EXXXXO");
+    static const auto OXXXXE = std::regex("OXXXXE");
+    static const auto XXEXX = std::regex("XXEXX");
+
     int cnt = 0;
-    cnt += search_and_push(line, to_five, std::regex("EXXXXO"), {0});
-    cnt += search_and_push(line, to_five, std::regex("OXXXXE"), {5});
-    cnt += search_and_push(line, to_five, std::regex("XXEXX"), {2});
+    cnt += search_and_push(line, to_five, EXXXXO, {0});
+    cnt += search_and_push(line, to_five, OXXXXE, {5});
+    cnt += search_and_push(line, to_five, XXEXX, {2});
     return cnt;
 }
 

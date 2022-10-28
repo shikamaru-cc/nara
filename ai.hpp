@@ -354,6 +354,8 @@ private:
     {
         assert(board.getchess(pos) == EMPTY);
         choose_t choose{pos, 0, 0, 0};
+
+        /*
         for(auto dir : directions)
         {
             auto line = line_for_pos(pos, dir);
@@ -365,6 +367,7 @@ private:
         choose.score = (mine == BLACK)
             ? choose.score_blk - choose.score_wht
             : choose.score_wht - choose.score_blk;
+        */
 
         return choose;
     }
