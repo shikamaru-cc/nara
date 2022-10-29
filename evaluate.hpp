@@ -64,13 +64,13 @@ void gen_lines()
     dir = {1, 1};
     for(int i = 0; i < gomoku_board::WIDTH; i++)
     {
-        origin = {i, 0};
+        origin = {0, i};
         all_lines.push_back(line_t{origin, dir});
     }
     // i == 1 here to avoid re-eval origin {0, 0}
     for(int i = 1; i < gomoku_board::WIDTH; i++)
     {
-        origin = {14, i};
+        origin = {i, 0};
         all_lines.push_back(line_t{origin, dir});
     }
 }
@@ -94,13 +94,6 @@ std::vector<pattern> patterns {
 
     {std::regex("EXXE"), FLEX2},
     {std::regex("EXEXE"), FLEX2},
-
-    {std::regex("EXXXO"), SICK3},
-    {std::regex("OXXXE"), SICK3},
-    {std::regex("OXXEXE"), SICK3},
-    {std::regex("EXXEXO"), SICK3},
-    {std::regex("OXEXXE"), SICK3},
-    {std::regex("EXEXXO"), SICK3},
 
     {std::regex("XXXXX"), FLEX5},
 };
