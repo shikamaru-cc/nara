@@ -9,6 +9,7 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_set>
+#include <unordered_map>
 
 #include "board.hpp"
 
@@ -229,10 +230,18 @@ void to_unique(std::vector<int> & vec)
     vec.assign(s.begin(), s.end());
 }
 
+std::unordered_map<std::string, eval_result> results_table;
+
 eval_result evaluate(std::string const & line)
 {
-    auto res = evaluate_wrap("O" + line + "O");
+    std::string wrapped = "O" + line + "O";
 
+    if (results_table.contains(wrapped))
+        return results_table.at(wrapped);
+
+    auto res = evaluate_wrap(wrapped);
+
+    to_unique(res.to_sick4);
     to_unique(res.to_flex4);
     to_unique(res.to_five);
 
@@ -240,6 +249,8 @@ eval_result evaluate(std::string const & line)
     std::ranges::for_each(res.to_sick4, dec);
     std::ranges::for_each(res.to_flex4, dec);
     std::ranges::for_each(res.to_five, dec);
+
+    results_table.insert({wrapped, res});
 
     return res;
 }
@@ -330,6 +341,8 @@ auto evaluate_line(gomoku_board const & board, line_t line)
         p = {p.x + dir.x, p.y + dir.y};
     }
 
+    auto res = nara::evaluate(chesses);
+
     /*
     auto end = std::chrono::system_clock::now();
     logger << "evaluate_line use "
@@ -338,7 +351,7 @@ auto evaluate_line(gomoku_board const & board, line_t line)
     logger.flush();
     */
 
-    return nara::evaluate(chesses);
+    return res;
 }
 
 auto evaluate_board(gomoku_board const & board)

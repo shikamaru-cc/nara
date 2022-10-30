@@ -245,6 +245,7 @@ void debug_display(gomoku_board const & board, score_board const & sboard)
     {
         logger << p << " ";
     }
+    logger << std::endl;
     logger << "to FIVE: ";
     for(auto p : sboard.to_five_points(BLACK))
     {
@@ -398,6 +399,21 @@ private:
         };
     }
 
+    int neigh_cnt(score_board const & sboard, gomoku_chess to_count, point_t pos)
+    {
+        int cnt = 0;
+        for(auto dir : directions)
+        {
+            auto line = line_for_pos(pos, dir, 2);
+            for(auto p : line)
+            {
+                if (!gomoku_board::outbox(p) and sboard.getchess(p) == to_count)
+                    cnt++;
+            }
+        }
+        return cnt;
+    }
+
     template <typename T, typename E = point_t>
     auto to_vec(T && src)
     {
@@ -430,15 +446,21 @@ private:
 
         // TODO: sort chooses
 
-        auto chooses = candidates
-                     | std::views::filter(is_empty_at(sboard))
-                     | std::views::filter(has_neigh_at(sboard));
+        auto sorter = [&](point_t p1, point_t p2) {
+            return neigh_cnt(sboard, next, p1) > neigh_cnt(sboard, next, p2);
+        };
 
-        if (!chooses.empty()) return to_vec(chooses);
+        auto chooses = to_vec(candidates
+                     | std::views::filter(is_empty_at(sboard))
+                     | std::views::filter(has_neigh_at(sboard)));
+
+        std::ranges::sort(chooses, sorter);
+
+        if (!chooses.empty()) return chooses;
 
         return to_vec( candidates
                      | std::views::filter(is_empty_at(sboard))
-                     | std::views::take(9));
+                     | std::views::take(1));
     }
 
     std::tuple<point_t, int> alphabeta(
@@ -453,7 +475,7 @@ private:
 
         auto chooses = gen_chooses(sboard, next);
 
-        if (depth == 4) {
+        if (depth == 6) {
             for (auto & choose : chooses)
             {
                 logger << choose << " ";
@@ -469,6 +491,7 @@ private:
             for(auto & choose : chooses)
             {
                 auto next_sboard = score_board(sboard, next, choose);
+
                 if (next_sboard.winner() == next)
                     return std::make_tuple(choose, score_win);
 
@@ -527,7 +550,7 @@ public:
 
         auto start = std::chrono::system_clock::now();
 
-        auto [pos, score] = alphabeta(score_board(board), mine, -10000000, 10000000, true, 4);
+        auto [pos, score] = alphabeta(score_board(board), mine, -10000000, 10000000, true, 6);
 
         auto end = std::chrono::system_clock::now();
 
@@ -539,7 +562,9 @@ public:
         logger << "depth0: "  << depth_cnt[0]
                << " depth1: " << depth_cnt[1]
                << " depth2: " << depth_cnt[2]
-               << " depth3: " << depth_cnt[3] << "\n";
+               << " depth3: " << depth_cnt[3]
+               << " depth4: " << depth_cnt[4]
+               << " depth5: " << depth_cnt[5] << "\n";
 
         logger.flush();
 
