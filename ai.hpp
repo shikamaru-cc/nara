@@ -1,502 +1,195 @@
 #pragma once
 
+#include <cassert>
+#include <algorithm>
+#include <array>
 #include <tuple>
 #include <ranges>
-#include <vector>
-#include <algorithm>
 
 #include "log.hpp"
-#include "debug.hpp"
-#include "bench.hpp"
+#include "eval.hpp"
 #include "board.hpp"
-#include "evaluate.hpp"
 
-namespace nara {
+namespace nara
+{
 
-struct score_board {
-private:
-    // ori.x ori.y dir
-    nara::eval_result _score_blk[15][15][4];
-    nara::eval_result _score_wht[15][15][4];
+class gomoku_ai
+{
+  private:
 
-    int _total_blk;
-    int _total_wht;
+    gomoku_chess mine;
 
-    int idx_of_dir(point_t dir) const
+    gomoku_board board;
+
+    chess_state states[15][15];
+
+    int depth_tracker[50];
+
+    static constexpr auto initial_chooses()
     {
-        if(dir == point_t{0, 1}) return 0;
-        if(dir == point_t{1, 0}) return 1;
-        if(dir == point_t{1, 1}) return 2;
-        if(dir == point_t{-1, 1}) return 3;
-        assert(false);
+        std::array<std::tuple<int, int>, 15*15> res;
+        int x = 0;
+        for (int i = 0; i < 15; i++)
+            for (int j = 0; j < 15; j++)
+                res[x++] = std::make_tuple(i, j);
+        return res;
     }
 
-    point_t origin_at_line(point_t pos, point_t dir)
+    void update_state(point_t pos)
     {
-        for(;;)
-        {
-           point_t back_pos = {pos.x - dir.x, pos.y - dir.y};
-           if(gomoku_board::outbox(back_pos))
-               return pos;
-           pos = back_pos;
-        }
+        if (!board.outbox(pos))
+            states[pos.x][pos.y] = get_state(board, pos);
     }
 
-    std::vector<line_t> lines_contain_pos(point_t pos)
+    void setchess(point_t pos, gomoku_chess chess)
     {
-        std::vector<line_t> lines;
-        for(auto dir : directions)
-            lines.emplace_back(line_t{origin_at_line(pos, dir), dir});
-        return lines;
+        board.setchess(pos, chess);
+        for (auto dir : directions)
+            for (int fac = -4; fac <= 4; fac++)
+                update_state(pos + dir * fac);
     }
 
-    void update_line(line_t line)
-    {
-        _total_blk -=
-            _score_blk[line.ori.x][line.ori.y][idx_of_dir(line.dir)].score;
+    // template <typename SS>
+    // std::vector<point_t> states_to_points(SS const & ss)
+    // {
+    //     std::vector<point_t> ret;
+    //     for (auto s : ss)
+    //         ret.push_back(s.pos);
+    //     return ret;
+    // }
 
-        _total_wht -=
-            _score_wht[line.ori.x][line.ori.y][idx_of_dir(line.dir)].score;
-
-        auto [res_blk, res_wht] = evaluate_line(_board, line);
-        _score_blk[line.ori.x][line.ori.y][idx_of_dir(line.dir)] = res_blk;
-        _score_wht[line.ori.x][line.ori.y][idx_of_dir(line.dir)] = res_wht;
-
-        _total_blk += res_blk.score;
-        _total_wht += res_wht.score;
-    }
-
-public:
-    gomoku_board _board;
-
-    point_t last_pos;
-
-    score_board() = delete;
-
-    score_board(gomoku_board const & board): _board(board)
-    {
-        _total_blk = _total_wht = 0;
-        for(auto line : all_lines)
-        {
-            auto [res_blk, res_wht] = evaluate_line(_board, line);
-            _score_blk[line.ori.x][line.ori.y][idx_of_dir(line.dir)] = res_blk;
-            _score_wht[line.ori.x][line.ori.y][idx_of_dir(line.dir)] = res_wht;
-            _total_blk += res_blk.score;
-            _total_wht += res_wht.score;
-        }
-    }
-
-    score_board(
-        score_board const & prev_sboard,
-        gomoku_chess next_chess,
-        point_t next_pos)
-    {
-        _board = gomoku_board(prev_sboard._board);
-        last_pos = next_pos;
-
-        std::ranges::copy(
-            &prev_sboard._score_blk[0][0][0],
-            &prev_sboard._score_blk[0][0][0] + 15 * 15 * 4,
-            &_score_blk[0][0][0]
-        );
-        std::ranges::copy(
-            &prev_sboard._score_wht[0][0][0],
-            &prev_sboard._score_wht[0][0][0] + 15 * 15 * 4,
-            &_score_wht[0][0][0]
-        );
-        _total_blk = prev_sboard._total_blk;
-        _total_wht = prev_sboard._total_wht;
-
-        setchess(next_pos, next_chess);
-    }
-
-    void setchess(point_t next_pos, gomoku_chess next_chess)
-    {
-        last_pos = next_pos;
-        _board.setchess(next_pos, next_chess);
-        for(auto & line : lines_contain_pos(next_pos))
-            update_line(line);
-    }
-
-    gomoku_chess getchess(point_t pos) const
-    {
-        return _board.getchess(pos);
-    }
-
-    eval_result line_result(gomoku_chess chess, point_t ori, point_t dir) const
-    {
-        return (chess == BLACK)
-            ? _score_blk[ori.x][ori.y][idx_of_dir(dir)]
-            : _score_wht[ori.x][ori.y][idx_of_dir(dir)];
-    }
-
-    eval_result line_result(gomoku_chess chess, line_t line) const
-    {
-        return line_result(chess, line.ori, line.dir);
-    }
-
-    int total_score(gomoku_chess chess) const
-    {
-        return (chess == BLACK) ? _total_blk : _total_wht;
-    }
-
-    int get_score(gomoku_chess chess) const
-    {
-        return (chess == BLACK)
-            ? _total_blk - _total_wht
-            : _total_wht - _total_blk;
-    }
-
-    gomoku_chess winner() const
-    {
-        if (_total_blk >= pattern_score[FLEX5])
-            return BLACK;
-        else if (_total_wht >= pattern_score[FLEX5])
-            return WHITE;
-        return EMPTY;
-    }
-
-    template <typename VP>
-    std::vector<point_t> to_x_points(gomoku_chess chess, VP vp) const
+    template <std::ranges::range SS>
+    std::vector<point_t> states_to_points(SS ss)
     {
         std::vector<point_t> ret;
-        auto & res = (chess == BLACK) ? _score_blk : _score_wht;
-        for(auto line : all_lines)
-        {
-            auto idxs =
-                res[line.ori.x][line.ori.y][idx_of_dir(line.dir)].*vp;
-            for(int i : idxs)
-                ret.emplace_back(point_t{
-                    line.ori.x + i * line.dir.x,
-                    line.ori.y + i * line.dir.y
-                });
-        }
+        for (auto s : ss | std::views::all)
+            ret.push_back(s.pos);
         return ret;
     }
 
-    std::vector<point_t> to_sick4_points(gomoku_chess chess) const
+    std::vector<point_t> gen_chooses(gomoku_board const& board, gomoku_chess next)
     {
-        return to_x_points(chess, &eval_result::to_sick4);
-    }
+        static constexpr auto all_points = initial_chooses();
 
-    std::vector<point_t> to_flex4_points(gomoku_chess chess) const
-    {
-        return to_x_points(chess, &eval_result::to_flex4);
-    }
-
-    std::vector<point_t> to_five_points(gomoku_chess chess) const
-    {
-        return to_x_points(chess, &eval_result::to_five);
-    }
-
-    std::tuple<eval_result, eval_result> summary() const
-    {
-        eval_result blk, wht;
-        for(auto line : all_lines)
+        auto to_point = [&](std::tuple<int, int> p)
         {
-            auto res_blk = line_result(BLACK, line);
-            auto res_wht = line_result(WHITE, line);
-            for(int i = SICK2; i <= FLEX5; i++)
-            {
-                blk.score += res_blk.score;
-                wht.score += res_wht.score;
-                blk.pattern_cnt[i] += res_blk.pattern_cnt[i];
-                wht.pattern_cnt[i] += res_wht.pattern_cnt[i];
-            }
-        }
-        return std::make_tuple(blk, wht);
-    }
-};
-
-void debug_display(gomoku_board const & board, score_board const & sboard)
-{
-    logger << "======================" << std::endl;
-    for(int i = 0; i < gomoku_board::WIDTH; i++)
-    {
-        for(int j = 0; j < gomoku_board::WIDTH; j++)
-        {
-            switch (board.getchess(i, j)) {
-            case BLACK: logger << "X"; break;
-            case WHITE: logger << "O"; break;
-            case EMPTY: logger << "-"; break;
-            }
-            logger << " ";
-        }
-        logger << std::endl;
-    }
-
-    auto [res_blk, res_wht] = sboard.summary();
-
-    logger << "result score: "<< sboard.total_score(BLACK);
-    logger << "SICK2: "<< res_blk.pattern_cnt[SICK2];
-    logger << "FLEX2: "<< res_blk.pattern_cnt[FLEX2];
-    logger << "SICK3: "<< res_blk.pattern_cnt[SICK3];
-    logger << "FLEX3: "<< res_blk.pattern_cnt[FLEX3];
-    logger << "SICK4: "<< res_blk.pattern_cnt[SICK4];
-    logger << "FLEX4: "<< res_blk.pattern_cnt[FLEX4];
-    logger << "FLEX5: "<< res_blk.pattern_cnt[FLEX5];
-    logger << "to SICK4: ";
-    for(auto p : sboard.to_sick4_points(BLACK))
-    {
-        logger << p << " ";
-    }
-    logger << "to FLEX4: ";
-    for(auto p : sboard.to_flex4_points(BLACK))
-    {
-        logger << p << " ";
-    }
-    logger << std::endl;
-    logger << "to FIVE: ";
-    for(auto p : sboard.to_five_points(BLACK))
-    {
-        logger << p << " ";
-    }
-    logger << std::endl;
-
-    logger << "result score: "<< sboard.total_score(WHITE);
-    logger << "SICK2: "<< res_wht.pattern_cnt[SICK2];
-    logger << "FLEX2: "<< res_wht.pattern_cnt[FLEX2];
-    logger << "SICK3: "<< res_wht.pattern_cnt[SICK3];
-    logger << "FLEX3: "<< res_wht.pattern_cnt[FLEX3];
-    logger << "SICK4: "<< res_wht.pattern_cnt[SICK4];
-    logger << "FLEX4: "<< res_wht.pattern_cnt[FLEX4];
-    logger << "FLEX5: "<< res_wht.pattern_cnt[FLEX5];
-    logger << "to SICK4: ";
-    for(auto p : sboard.to_sick4_points(BLACK))
-    {
-        logger << p << " ";
-    }
-    logger << "to FLEX4: ";
-    logger << std::endl;
-    for(auto p : sboard.to_flex4_points(WHITE))
-    {
-        logger << p << " ";
-    }
-    logger << std::endl;
-    logger << "to FIVE: ";
-    for(auto p : sboard.to_five_points(WHITE))
-    {
-        logger << p << " ";
-    }
-    logger << std::endl;
-
-    logger << "======================" << std::endl;
-
-    logger.flush();
-}
-
-class gomoku_ai {
-private:
-    // my chess
-    gomoku_chess mine;
-
-    // candidates are all chess positions but sort by priority
-    points_t candidates;
-
-    // prior of a candidate depends on its distance from board center.
-    int prior_of(point_t p)
-    {
-        static const point_t board_center =
-            { gomoku_board::WIDTH / 2, gomoku_board::WIDTH / 2 };
-
-        int dx = p.x - board_center.x;
-        int dy = p.y - board_center.y;
-        return -(dx * dx + dy * dy);
-    }
-
-    // TODO: init candidates at compile time
-    void init_candidates(void)
-    {
-        for(int i = 0; i < gomoku_board::WIDTH; i++)
-            for(int j = 0; j < gomoku_board::WIDTH; j++)
-                candidates.emplace_back(point_t{i, j});
-
-        auto compare_priority = [&](point_t p1, point_t p2){
-            return prior_of(p1) > prior_of(p2);
+            return point_t{std::get<0>(p), std::get<1>(p)};
         };
 
-        std::ranges::sort(candidates, compare_priority);
-    }
-
-    struct choose_t {
-        point_t pos;
-        int score_blk;
-        int score_wht;
-        int score;
-    };
-
-    std::vector<point_t>
-    line_for_pos(point_t pos, point_t dir, int max_fac)
-    {
-        std::vector<point_t> line;
-        for(int fac = -max_fac; fac <= max_fac; fac++)
+        auto is_empty = [&](point_t p)
         {
-            line.emplace_back(
-                point_t{ pos.x + fac * dir.x, pos.y + fac * dir.y }
-            );
-        }
-        return line;
-    }
-
-    std::vector<point_t>
-    line_for_pos(point_t pos, point_t dir)
-    {
-        return line_for_pos(pos, dir, 4);
-    }
-
-    std::vector<nara::gomoku_chess>
-    gen_chesses(gomoku_board const & board, std::vector<point_t> line)
-    {
-        std::vector<nara::gomoku_chess> chesses;
-        for(auto & p : line)
-        {
-            if (!board.outbox(p))
-                chesses.push_back(board.getchess(p));
-        }
-        return chesses;
-    }
-
-    choose_t gen_choose(gomoku_board const & board, point_t pos)
-    {
-        assert(board.getchess(pos) == EMPTY);
-        choose_t choose{pos, 0, 0, 0};
-
-        /*
-        for(auto dir : directions)
-        {
-            auto line = line_for_pos(pos, dir);
-            auto chesses = gen_chesses(board, line);
-            auto [rblk, rwht] = evaluate(chesses);
-            choose.score_blk += rblk.score;
-            choose.score_wht += rwht.score;
-        }
-        choose.score = (mine == BLACK)
-            ? choose.score_blk - choose.score_wht
-            : choose.score_wht - choose.score_blk;
-        */
-
-        return choose;
-    }
-
-    auto is_empty_at(score_board const & sboard)
-    {
-        return [&](point_t pos) { return sboard.getchess(pos) == EMPTY; };
-    }
-
-    auto has_neigh_at(score_board const & sboard)
-    {
-        return [&](point_t pos) {
-            for(auto dir : directions)
-            {
-                auto line = line_for_pos(pos, dir, 2);
-                for(auto p : line)
-                {
-                    if (gomoku_board::outbox(p)) continue;
-                    if (sboard.getchess(p) != EMPTY) return true;
-                }
-            }
-            return false;
-        };
-    }
-
-    int neigh_cnt(score_board const & sboard, gomoku_chess to_count, point_t pos)
-    {
-        int cnt = 0;
-        for(auto dir : directions)
-        {
-            auto line = line_for_pos(pos, dir, 2);
-            for(auto p : line)
-            {
-                if (!gomoku_board::outbox(p) and sboard.getchess(p) == to_count)
-                    cnt++;
-            }
-        }
-        return cnt;
-    }
-
-    template <typename T, typename E = point_t>
-    auto to_vec(T && src)
-    {
-        std::vector<E> dst;
-        std::ranges::copy(src, std::back_inserter(dst));
-        return dst;
-    }
-
-    auto gen_chooses(score_board const & sboard, gomoku_chess next)
-    {
-        // fast choose path
-
-        auto my_to_five = sboard.to_five_points(next);
-        if (!my_to_five.empty()) return to_vec(my_to_five);
-
-        auto opp_to_five = sboard.to_five_points(oppof(next));
-        if (!opp_to_five.empty()) return to_vec(opp_to_five);
-
-        auto my_to_flex4  = sboard.to_flex4_points(next);
-        auto opp_to_flex4 = sboard.to_flex4_points(oppof(next));
-
-        if (!my_to_flex4.empty()) return to_vec(my_to_flex4);
-
-        if (!opp_to_flex4.empty()) {
-            // debug_display(sboard._board, sboard);
-            auto my_to_sick4 = sboard.to_sick4_points(next);
-            auto v = { opp_to_flex4, my_to_sick4 };
-            return to_vec(std::ranges::join_view(v));
-        }
-
-        // TODO: sort chooses
-
-        auto sorter = [&](point_t p1, point_t p2) {
-            return neigh_cnt(sboard, next, p1) > neigh_cnt(sboard, next, p2);
+            return board.getchess(p) == EMPTY;
         };
 
-        auto chooses = to_vec(candidates
-                     | std::views::filter(is_empty_at(sboard))
-                     | std::views::filter(has_neigh_at(sboard)));
+        auto to_state = [this](point_t p)
+        {
+            return this->states[p.x][p.y];
+        };
 
-        std::ranges::sort(chooses, sorter);
+        auto has_neighbor = [](chess_state s)
+        {
+            return s.has_neighbor();
+        };
 
-        if (!chooses.empty()) return chooses;
+        auto candidates = all_points
+                        | std::views::transform(to_point)
+                        | std::views::filter(is_empty)
+                        | std::views::transform(to_state)
+                        | std::views::filter(has_neighbor);
+        
+        std::vector<point_t> ret;
 
-        return to_vec( candidates
-                     | std::views::filter(is_empty_at(sboard))
-                     | std::views::take(1));
+        // TODO: fast path
+
+        // me have five ?
+        auto has_five = [next](chess_state s)
+        {
+            return s.has_category(next, FIVE);
+        };
+
+        ret = states_to_points(candidates | std::views::filter(has_five));
+        if (not ret.empty())
+            return ret;
+
+        // opp has five ?
+        auto opp_five = [next](chess_state s)
+        {
+            return s.has_category(oppof(next), FIVE);
+        };
+
+        ret = states_to_points(candidates | std::views::filter(opp_five));
+        if (not ret.empty())
+            return ret;
+
+        auto opp_flex4 = [next](chess_state s)
+        {
+            return s.has_category(oppof(next), FLEX4);
+        };
+
+        ret = states_to_points(candidates | std::views::filter(opp_flex4));
+        if (not ret.empty())
+            return ret;
+
+        // sort candidates
+        auto sorter = [next](chess_state s1, chess_state s2)
+        {
+            return s1.rankof(next) > s2.rankof(next);
+        };
+
+        std::vector<chess_state> unsorted;
+        std::ranges::copy(candidates, std::back_inserter(unsorted));
+        std::ranges::sort(unsorted, sorter);
+
+        ret = states_to_points(unsorted);
+
+        if (ret.empty())
+            ret.push_back({7, 7});
+
+        return ret;
     }
 
-    std::tuple<point_t, int> alphabeta(
-        score_board const & sboard, gomoku_chess next,
-        int alpha, int beta, bool ismax, int depth)
+    int evaluate(gomoku_chess chess)
     {
-        if (depth < 20)
-            depth_cnt[depth]++;
+        int val = 0;
+        for (int i = 0; i < 15; i++)
+            for (int j = 0; j < 15; j++)
+                if (board.getchess(i, j) == chess)
+                    val += states[i][j].rankof(chess);
+        return val;
+    }
+
+  public:
+    gomoku_ai(gomoku_chess chess): mine(chess) {}
+
+    std::tuple<point_t, int>
+    alphabeta(point_t last_move, gomoku_chess next, int alpha, int beta, bool ismax, int depth)
+    {
+        if (depth < 50) depth_tracker[depth]++;
 
         if (depth == 0)
-            return std::make_tuple(sboard.last_pos, sboard.get_score(mine));
+            return std::make_tuple(last_move, evaluate(mine) - evaluate(oppof(mine)));
 
-        auto chooses = gen_chooses(sboard, next);
-
-        if (depth == 6) {
-            for (auto & choose : chooses)
-            {
-                logger << choose << " ";
-            }
-            logger << "\n";
-            logger.flush();
-        }
+        auto chooses = gen_chooses(board, next);
 
         point_t bestpos;
 
-        if(ismax) {
-            int score = -10000000;
-            for(auto & choose : chooses)
+        if (ismax)
+        {
+            int score = score_lose;
+            for (auto & choose : chooses)
             {
-                auto next_sboard = score_board(sboard, next, choose);
+                board.setchess(choose, next);
 
-                if (next_sboard.winner() == next)
+                // win
+                if (states[choose.x][choose.y].has_category(next, FIVE))
+                {
+                    board.setchess(choose, EMPTY);
                     return std::make_tuple(choose, score_win);
+                }
 
-                auto[_ , _score] =
-                    alphabeta(next_sboard, oppof(next), alpha, beta, false, depth - 1);
+                auto[_ , _score] = alphabeta(choose, oppof(next), alpha, beta, false, depth - 1);
+
+                board.setchess(choose, EMPTY);
 
                 if(_score > score)
                     bestpos = choose;
@@ -511,15 +204,21 @@ private:
         }
 
         // ismin
-        int score = 10000000;
-        for(auto & choose : chooses)
+        int score = score_win;
+        for (auto & choose : chooses)
         {
-            auto next_sboard = score_board(sboard, next, choose);
-            if (next_sboard.winner() == next)
-                return std::make_tuple(choose, -score_win);
+            board.setchess(choose, next);
 
-            auto[_ , _score] =
-                alphabeta(next_sboard, oppof(next), alpha, beta, true, depth - 1);
+            // win
+            if (states[choose.x][choose.y].has_category(next, FIVE))
+            {
+                board.setchess(choose, EMPTY);
+                return std::make_tuple(choose, score_lose);
+            }
+
+            auto[_ , _score] = alphabeta(choose, oppof(next), alpha, beta, true, depth - 1);
+
+            board.setchess(choose, EMPTY);
 
             if(_score < score)
                 bestpos = choose;
@@ -533,39 +232,28 @@ private:
         return std::make_tuple(bestpos, score);
     }
 
-public:
-    // just for debug
-    int depth_cnt[20];
-
-    gomoku_ai(gomoku_chess chess): mine(chess) { init_candidates(); }
-
-    point_t getnext(gomoku_board const & board)
+    point_t get_next(gomoku_board const& _board)
     {
-        for(int i = 0; i < 20; i++)
-            depth_cnt[i] = 0;
+        board.winner = _board.winner;
+        for(int i = 0; i < 15; i++)
+            for(int j = 0; j < 15; j++)
+                board.chesses[i][j] = _board.chesses[i][j];
 
-        last_eval_times = 0;
+        for(int i = 0; i < 15; i++)
+            for(int j = 0; j < 15; j++)
+                states[i][j] = get_state(board, i, j);
 
-        // auto [pos, score] = alphabeta(score_board(board), mine, -10000000, 10000000, true, 4);
+        for (int i = 0; i < 50; i++)
+            depth_tracker[i] = 0;
+        
+        auto [pos, score] = alphabeta({0, 0}, mine, score_lose, score_win, true, 4);
 
-        auto start = std::chrono::system_clock::now();
-
-        auto [pos, score] = alphabeta(score_board(board), mine, -10000000, 10000000, true, 6);
-
-        auto end = std::chrono::system_clock::now();
-
-        logger << "get next use "
-               << std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-               << " eval times: " << last_eval_times
-               << '\n';
-
-        logger << "depth0: "  << depth_cnt[0]
-               << " depth1: " << depth_cnt[1]
-               << " depth2: " << depth_cnt[2]
-               << " depth3: " << depth_cnt[3]
-               << " depth4: " << depth_cnt[4]
-               << " depth5: " << depth_cnt[5] << "\n";
-
+        for (int i = 0; i < 50; i++)
+        {
+            if (depth_tracker[i] == 0) break;
+            logger << "depth" << "[" << i << "]: " << depth_tracker[i] << ' ';
+        }
+        logger << std::endl;
         logger.flush();
 
         return pos;
