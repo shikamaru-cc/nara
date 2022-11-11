@@ -71,79 +71,142 @@ class gomoku_ai
     {
         static constexpr auto all_points = initial_chooses();
 
+        std::vector<point_t> me_five, op_five;
+        std::vector<point_t> me_flex4, op_flex4;
+        std::vector<point_t> me_b4b4, op_b4b4;
+        std::vector<point_t> me_b4f3, op_b4f3;
+        std::vector<point_t> me_2flex3, op_2flex3;
+        std::vector<point_t> me_block4, me_flex3;
+
+        std::vector<point_t> ret;
+
         auto to_point = [&](std::tuple<int, int> p)
         {
             return point_t{std::get<0>(p), std::get<1>(p)};
         };
 
-        auto is_empty = [&](point_t p)
+        for (auto p : all_points | std::views::transform(to_point))
         {
-            return board.getchess(p) == EMPTY;
-        };
+            auto state = states[p.x][p.y];
 
-        auto to_state = [this](point_t p)
+            if (board.getchess(p) != EMPTY)
+                continue;
+
+            if (not state.has_neighbor())
+                continue;
+
+            auto we_have = state.cats_for(next);
+            auto op_have = state.cats_for(oppof(next));
+
+            if (we_have[FIVE])
+            {
+                me_five.push_back(p);
+            }
+            if (op_have[FIVE])
+            {
+                op_five.push_back(p);
+            }
+
+            if (we_have[FLEX4])
+            {
+                me_flex4.push_back(p);
+            }
+            if (op_have[FLEX4])
+            {
+                op_flex4.push_back(p);
+            }
+
+            if (we_have[BLOCK4] > 1)
+            {
+                me_b4b4.push_back(p);
+            }
+            if (op_have[BLOCK4] > 1)
+            {
+                op_b4b4.push_back(p);
+            }
+
+            if (we_have[BLOCK4] and we_have[FLEX3])
+            {
+                me_b4f3.push_back(p);
+            }
+            if (op_have[BLOCK4] and op_have[FLEX3])
+            {
+                op_b4f3.push_back(p);
+            }
+
+            if (we_have[FLEX3] > 1)
+            {
+                me_2flex3.push_back(p);
+            }
+            if (op_have[FLEX3] > 1)
+            {
+                op_2flex3.push_back(p);
+            }
+
+            if (we_have[BLOCK4])
+            {
+                me_block4.push_back(p);
+            }
+            if (we_have[FLEX3])
+            {
+                me_flex3.push_back(p);
+            }
+
+            ret.push_back(p);
+        }
+
+        if (not me_five.empty()) return me_five;
+
+        if (not op_five.empty()) return op_five;
+
+        if (not me_flex4.empty()) return me_flex4;
+
+        if (not me_b4b4.empty()) return me_b4b4;
+
+        if (not me_b4f3.empty()) return me_b4f3;
+
+        if (not op_flex4.empty())
         {
-            return this->states[p.x][p.y];
-        };
-
-        auto has_neighbor = [](chess_state s)
-        {
-            return s.has_neighbor();
-        };
-
-        auto candidates = all_points
-                        | std::views::transform(to_point)
-                        | std::views::filter(is_empty)
-                        | std::views::transform(to_state)
-                        | std::views::filter(has_neighbor);
-        
-        std::vector<point_t> ret;
-
-        // TODO: fast path
-
-        // me have five ?
-        auto has_five = [next](chess_state s)
-        {
-            return s.has_category(next, FIVE);
-        };
-
-        ret = states_to_points(candidates | std::views::filter(has_five));
-        if (not ret.empty())
+            auto ret = op_flex4;
+            ret.insert(ret.end(), me_block4.begin(), me_block4.end());
             return ret;
+        }
 
-        // opp has five ?
-        auto opp_five = [next](chess_state s)
+        if (not op_b4b4.empty())
         {
-            return s.has_category(oppof(next), FIVE);
-        };
-
-        ret = states_to_points(candidates | std::views::filter(opp_five));
-        if (not ret.empty())
+            auto ret = op_b4b4;
+            ret.insert(ret.end(), me_block4.begin(), me_block4.end());
             return ret;
+        }
 
-        auto opp_flex4 = [next](chess_state s)
+        if (not op_b4f3.empty())
         {
-            return s.has_category(oppof(next), FLEX4);
-        };
-
-        ret = states_to_points(candidates | std::views::filter(opp_flex4));
-        if (not ret.empty())
+            auto ret = op_b4f3;
+            ret.insert(ret.end(), me_block4.begin(), me_block4.end());
             return ret;
+        }
 
-        // sort candidates
-        auto sorter = [next](chess_state s1, chess_state s2)
+        if (not me_2flex3.empty()) return me_2flex3;
+
+        if (not op_2flex3.empty())
         {
-            return s1.rankof(next) > s2.rankof(next);
-        };
-
-        std::vector<chess_state> unsorted;
-        std::ranges::copy(candidates, std::back_inserter(unsorted));
-        std::ranges::sort(unsorted, sorter);
-
-        ret = states_to_points(unsorted);
+            auto ret = op_2flex3;
+            ret.insert(ret.end(), me_block4.begin(), me_block4.end());
+            ret.insert(ret.end(), me_flex3.begin(), me_flex3.end());
+            return ret;
+        }
 
         if (ret.empty())
-            ret.push_back({7, 7});
+        {
+            ret.push_back({7,7});
+        }
+
+        auto sorter = [this, next](point_t p1, point_t p2)
+        {
+            return this->states[p1.x][p1.y].rankof(next) > this->states[p2.x][p2.y].rankof(next);
+        };
+
+        std::ranges::sort(ret, sorter);
 
         return ret;
     }
@@ -178,18 +241,18 @@ class gomoku_ai
             int score = score_lose;
             for (auto & choose : chooses)
             {
-                board.setchess(choose, next);
+                setchess(choose, next);
 
                 // win
                 if (states[choose.x][choose.y].has_category(next, FIVE))
                 {
-                    board.setchess(choose, EMPTY);
+                    setchess(choose, EMPTY);
                     return std::make_tuple(choose, score_win);
                 }
 
                 auto[_ , _score] = alphabeta(choose, oppof(next), alpha, beta, false, depth - 1);
 
-                board.setchess(choose, EMPTY);
+                setchess(choose, EMPTY);
 
                 if(_score > score)
                     bestpos = choose;
@@ -207,18 +270,18 @@ class gomoku_ai
         int score = score_win;
         for (auto & choose : chooses)
         {
-            board.setchess(choose, next);
+            setchess(choose, next);
 
             // win
             if (states[choose.x][choose.y].has_category(next, FIVE))
             {
-                board.setchess(choose, EMPTY);
+                setchess(choose, EMPTY);
                 return std::make_tuple(choose, score_lose);
             }
 
             auto[_ , _score] = alphabeta(choose, oppof(next), alpha, beta, true, depth - 1);
 
-            board.setchess(choose, EMPTY);
+            setchess(choose, EMPTY);
 
             if(_score < score)
                 bestpos = choose;

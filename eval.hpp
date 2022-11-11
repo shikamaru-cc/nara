@@ -20,10 +20,8 @@ enum category_t
     FLEX3,
     BLOCK4,
     FLEX4,
-    FIVE
+    FIVE,
 };
-
-const int category_score[10] = { 0, 1, 1, 10, 100, 100, 1000, 1000, 100000, 1000000 };
 
 const int score_win = 1000000;
 const int score_lose = -score_win;
@@ -99,11 +97,6 @@ int bit_count(uint8_t x)
     return cnt;
 }
 
-// int cal_rank(uint8_t px, uint8_t py)
-// {
-//     return category_score[cal_category(px, py)];
-// }
-
 int cal_rank(uint8_t px, uint8_t py)
 {
     static const int rank[5] = {1, 4, 9, 16, 25};
@@ -115,28 +108,23 @@ int cal_rank(uint8_t px, uint8_t py)
     return val;
 }
 
-// NOTE: According to test results, the performance of calculating category
-// with cal_category directly is fast than generate a table at compile time.
-// I have no idea for the reason, but obviously it's not neccessary to
-// calculate such a table at compile time.
+constexpr auto gen_category_table()
+{
+    std::array<std::array<int, 256>, 256> table{};
 
-// constexpr auto gen_category_table()
-// {
-//     std::array<std::array<int, 256>, 256> table{};
-// 
-//     for (int px = 0; px < 256; px++)
-//         for (int py = 0; py < 256; py++)
-//             table[px][py] = cal_category(px, py);
-// 
-//     return table;
-// }
+    for (int px = 0; px < 256; px++)
+        for (int py = 0; py < 256; py++)
+            table[px][py] = cal_category(px, py);
 
-// constexpr std::array<std::array<int, 256>, 256> category_table = gen_category_table();
+    return table;
+}
 
-// constexpr int get_category(uint8_t px, uint8_t py)
-// {
-//     return category_table[px][py];
-// }
+constexpr std::array<std::array<int, 256>, 256> category_table = gen_category_table();
+
+constexpr int get_category(uint8_t px, uint8_t py)
+{
+    return category_table[px][py];
+}
 
 struct pattern_pair
 {
@@ -152,6 +140,9 @@ struct chess_state
 
     pattern_pair pattern_blk[4];
     pattern_pair pattern_wht[4];
+
+    std::array<int, 10> cats_blk;
+    std::array<int, 10> cats_wht;
 
     pattern_pair get_pattern(gomoku_chess chess, point_t dir)
     {
@@ -201,6 +192,39 @@ struct chess_state
         }
         return false;
     }
+
+    int cnt_category(gomoku_chess for_chess, int cat)
+    {
+        int ret = 0;
+        for (auto dir : directions)
+        {
+            auto p = get_pattern(for_chess, dir);
+            if (cal_category(p.px, p.py) == cat)
+                ret++;
+        }
+        return ret;
+    }
+
+    void update_cats()
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            cats_blk[i] = 0;
+            cats_wht[i] = 0;
+        }
+        for (auto dir : directions)
+        {
+            auto p = get_pattern(BLACK, dir);
+            cats_blk[get_category(p.px, p.py)]++;
+            p = get_pattern(WHITE, dir);
+            cats_wht[get_category(p.px, p.py)]++;
+        }
+    }
+
+    auto cats_for(gomoku_chess chess)
+    {
+        return (chess == BLACK) ? cats_blk : cats_wht;
+    }
 };
 
 chess_state get_state(gomoku_board const& board, point_t pos)
@@ -237,6 +261,8 @@ chess_state get_state(gomoku_board const& board, point_t pos)
         ret.set_pattern(BLACK, dir, blk_px, blk_py);
         ret.set_pattern(WHITE, dir, wht_px, wht_py);
     }
+    ret.update_cats();
+
     for (auto dir : directions)
     {
         int neigh_cnt = 0;
