@@ -352,15 +352,17 @@ class gomoku_ai
 
     point_t get_next(gomoku_board const& _board)
     {
+        static const int max_depth = 6;
+
         reset_board(_board);
         reset_states();
         reset_zob();
         reset_tracker();
         
-        auto res = alphabeta({0, 0}, mine, score_lose, score_win, true, 6);
+        auto res = alphabeta({0, 0}, mine, score_lose, score_win, true, max_depth);
 
         int node_total = 0;
-        for (int i = 0; i <= 6; i++)
+        for (int i = 0; i <= max_depth; i++)
         {
             node_total += depth_tracker[i];
             logger << "depth" << "[" << i << "]: " << depth_tracker[i] << ' ';
