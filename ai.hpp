@@ -5,10 +5,12 @@
 #include <array>
 #include <tuple>
 #include <ranges>
+#include <unordered_map>
 
 #include "log.hpp"
 #include "eval.hpp"
 #include "board.hpp"
+#include "zobrist.hpp"
 
 namespace nara
 {
@@ -24,6 +26,21 @@ class gomoku_ai
     chess_state states[15][15];
 
     int depth_tracker[50];
+
+    int cache_hit;
+
+    struct search_res_t
+    {
+        int depth;
+        int score;
+        point_t p;
+
+        search_res_t(int _depth, int _score, point_t _p): depth(_depth), score(_score), p(_p) {}
+    };
+
+    zobrist_t zob;
+
+    std::unordered_map<zobrist_t, search_res_t, zobrist_hash, zobrist_eq> zob_table;
 
     static constexpr auto initial_chooses()
     {
@@ -44,27 +61,10 @@ class gomoku_ai
     void setchess(point_t pos, gomoku_chess chess)
     {
         board.setchess(pos, chess);
+        zob[pos.x][pos.y] = zobrist_val(pos, chess);
         for (auto dir : directions)
             for (int fac = -4; fac <= 4; fac++)
                 update_state(pos + dir * fac);
-    }
-
-    // template <typename SS>
-    // std::vector<point_t> states_to_points(SS const & ss)
-    // {
-    //     std::vector<point_t> ret;
-    //     for (auto s : ss)
-    //         ret.push_back(s.pos);
-    //     return ret;
-    // }
-
-    template <std::ranges::range SS>
-    std::vector<point_t> states_to_points(SS ss)
-    {
-        std::vector<point_t> ret;
-        for (auto s : ss | std::views::all)
-            ret.push_back(s.pos);
-        return ret;
     }
 
     std::vector<point_t> gen_chooses(gomoku_board const& board, gomoku_chess next)
@@ -222,19 +222,31 @@ class gomoku_ai
     }
 
   public:
-    gomoku_ai(gomoku_chess chess): mine(chess) {}
+    gomoku_ai(gomoku_chess chess): mine(chess) { init_zobrist(); }
 
-    std::tuple<point_t, int>
+    search_res_t
     alphabeta(point_t last_move, gomoku_chess next, int alpha, int beta, bool ismax, int depth)
     {
         if (depth < 50) depth_tracker[depth]++;
 
+        // cache hit
+        if (zob_table.find(zob) != zob_table.end())
+        {
+            auto res = zob_table.at(zob);
+            if (res.depth >= depth)
+            {
+                cache_hit++;
+                return res;
+            }
+        }
+
         if (depth == 0)
-            return std::make_tuple(last_move, evaluate(mine) - evaluate(oppof(mine)));
+            return search_res_t(depth, evaluate(mine) - evaluate(oppof(mine)), last_move);
 
         auto chooses = gen_chooses(board, next);
 
         point_t bestpos;
+        zobrist_t bestzob;
 
         if (ismax)
         {
@@ -246,24 +258,31 @@ class gomoku_ai
                 // win
                 if (states[choose.x][choose.y].has_category(next, FIVE))
                 {
+                    auto res = search_res_t(depth, score_win, choose);
+                    zob_table.insert_or_assign(zob, res);
                     setchess(choose, EMPTY);
-                    return std::make_tuple(choose, score_win);
+                    return res;
                 }
 
-                auto[_ , _score] = alphabeta(choose, oppof(next), alpha, beta, false, depth - 1);
+                auto res = alphabeta(choose, oppof(next), alpha, beta, false, depth - 1);
+
+                if(res.score > score)
+                {
+                    bestpos = choose;
+                    bestzob = zob;
+                }
 
                 setchess(choose, EMPTY);
 
-                if(_score > score)
-                    bestpos = choose;
-
-                score = std::max(score, _score);
+                score = std::max(score, res.score);
                 alpha = std::max(alpha, score);
 
                 if(beta <= alpha)
                     break;
             }
-            return std::make_tuple(bestpos, score);
+            auto res = search_res_t(depth, score, bestpos);
+            zob_table.insert_or_assign(bestzob, res);
+            return res;
         }
 
         // ismin
@@ -275,51 +294,87 @@ class gomoku_ai
             // win
             if (states[choose.x][choose.y].has_category(next, FIVE))
             {
+                auto res = search_res_t(depth, score_lose, choose);
+                zob_table.insert_or_assign(zob, res);
                 setchess(choose, EMPTY);
-                return std::make_tuple(choose, score_lose);
+                return res;
             }
 
-            auto[_ , _score] = alphabeta(choose, oppof(next), alpha, beta, true, depth - 1);
+            auto res = alphabeta(choose, oppof(next), alpha, beta, true, depth - 1);
+
+            if(res.score < score)
+            {
+                bestpos = choose;
+                bestzob = zob;
+            }
 
             setchess(choose, EMPTY);
 
-            if(_score < score)
-                bestpos = choose;
-
-            score = std::min(score, _score);
+            score = std::min(score, res.score);
             beta = std::min(beta, score);
 
             if(beta <= alpha)
                 break;
         }
-        return std::make_tuple(bestpos, score);
+        auto res = search_res_t(depth, score, bestpos);
+        zob_table.insert_or_assign(bestzob, res);
+        return res;
     }
 
-    point_t get_next(gomoku_board const& _board)
+    void reset_board(gomoku_board const& _board)
     {
         board.winner = _board.winner;
         for(int i = 0; i < 15; i++)
             for(int j = 0; j < 15; j++)
                 board.chesses[i][j] = _board.chesses[i][j];
+    }
 
+    void reset_states()
+    {
         for(int i = 0; i < 15; i++)
             for(int j = 0; j < 15; j++)
                 states[i][j] = get_state(board, i, j);
+    }
 
+    void reset_zob()
+    {
+        for(int i = 0; i < 15; i++)
+            for(int j = 0; j < 15; j++)
+                zob[i][j] = zobrist_val(i, j, board.getchess(i, j));
+    }
+
+    void reset_tracker()
+    {
+        cache_hit = 0;
         for (int i = 0; i < 50; i++)
             depth_tracker[i] = 0;
-        
-        auto [pos, score] = alphabeta({0, 0}, mine, score_lose, score_win, true, 4);
+    }
 
-        for (int i = 0; i < 50; i++)
+    point_t get_next(gomoku_board const& _board)
+    {
+        reset_board(_board);
+        reset_states();
+        reset_zob();
+        reset_tracker();
+        
+        auto res = alphabeta({0, 0}, mine, score_lose, score_win, true, 6);
+
+        int node_total = 0;
+        for (int i = 0; i <= 6; i++)
         {
-            if (depth_tracker[i] == 0) break;
+            node_total += depth_tracker[i];
             logger << "depth" << "[" << i << "]: " << depth_tracker[i] << ' ';
         }
         logger << std::endl;
+
+        logger << "node total: " << node_total
+               << " cache hit: " << cache_hit
+               << " hit rate " << (double)cache_hit / (double)node_total
+               << std::endl;
+
         logger.flush();
 
-        return pos;
+        return res.p;
     }
 };
 
