@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cstdint>
+#include <cmath>
+#include <numeric>
 
 #include "log.hpp"
 #include "board.hpp"
@@ -141,8 +143,8 @@ struct chess_state
     pattern_pair pattern_blk[4];
     pattern_pair pattern_wht[4];
 
-    std::array<int, 10> cats_blk;
-    std::array<int, 10> cats_wht;
+    std::array<std::array<int, 10>, 4> cats_blk;
+    std::array<std::array<int, 10>, 4> cats_wht;
 
     pattern_pair get_pattern(gomoku_chess chess, point_t dir)
     {
@@ -157,6 +159,48 @@ struct chess_state
         ptr += idx_of_dir(dir);
         ptr->px = px;
         ptr->py = py;
+    }
+
+    void update_chess(gomoku_chess chess, point_t dir, int step)
+    {
+        assert(step != 0);
+
+        int mask;
+        if (step > 0)
+            mask = (1 << 4) >> step;
+        else
+            mask = (1 << 3) << (-step);
+
+        int idx = idx_of_dir(dir);
+
+        if (chess == EMPTY)
+        {
+            pattern_blk[idx].px &= ~mask;
+            pattern_blk[idx].py &= ~mask;
+            pattern_wht[idx].px &= ~mask;
+            pattern_wht[idx].py &= ~mask;
+
+            if (std::abs(step) <= 2)
+                neighbors[idx]--;
+        }
+        else
+        {
+            if (chess == BLACK)
+            {
+                pattern_blk[idx].px |= mask;
+                pattern_wht[idx].py |= mask;
+            }
+            else
+            {
+                pattern_blk[idx].py |= mask;
+                pattern_wht[idx].px |= mask;
+            }
+
+            if (std::abs(step) <= 2)
+                neighbors[idx]++;
+        }
+
+        update_cats(dir);
     }
 
     void set_neighbor(point_t dir, int cnt)
@@ -193,39 +237,60 @@ struct chess_state
         return false;
     }
 
-    int cnt_category(gomoku_chess for_chess, int cat)
+    void update_cats(point_t dir)
     {
-        int ret = 0;
-        for (auto dir : directions)
+        int idx = idx_of_dir(dir);
+
+        for (int i = 0; i < 10; i++)
         {
-            auto p = get_pattern(for_chess, dir);
-            if (cal_category(p.px, p.py) == cat)
-                ret++;
+            cats_blk[idx][i] = 0;
+            cats_wht[idx][i] = 0;
         }
-        return ret;
+
+        auto p = get_pattern(BLACK, dir);
+        cats_blk[idx][get_category(p.px, p.py)]++;
+
+        p = get_pattern(WHITE, dir);
+        cats_wht[idx][get_category(p.px, p.py)]++;
     }
 
     void update_cats()
     {
-        for (int i = 0; i < 10; i++)
-        {
-            cats_blk[i] = 0;
-            cats_wht[i] = 0;
-        }
         for (auto dir : directions)
-        {
-            auto p = get_pattern(BLACK, dir);
-            cats_blk[get_category(p.px, p.py)]++;
-            p = get_pattern(WHITE, dir);
-            cats_wht[get_category(p.px, p.py)]++;
-        }
+            update_cats(dir);
+    }
+
+    static std::array<int, 10> sum_cats(std::array<int, 10> prev, const std::array<int, 10> & one)
+    {
+        for (int i = 0; i < 10; i++)
+            prev[i] += one[i];
+        return prev;
     }
 
     auto cats_for(gomoku_chess chess)
     {
-        return (chess == BLACK) ? cats_blk : cats_wht;
+        auto cats = (chess == BLACK) ? cats_blk : cats_wht;
+        return std::accumulate(
+                cats.cbegin(),
+                cats.cend(),
+                std::array<int, 10>{},
+                sum_cats);
     }
 };
+
+bool state_equal(chess_state s1, chess_state s2)
+{
+    for (int i = 0; i < 4; i++)
+    {
+        if (s1.neighbors[i] != s2.neighbors[i] or
+            s1.pattern_blk[i].px != s2.pattern_blk[i].px or
+            s1.pattern_blk[i].py != s2.pattern_blk[i].py or
+            s1.pattern_wht[i].px != s2.pattern_wht[i].px or
+            s1.pattern_wht[i].py != s2.pattern_wht[i].py)
+            return false;
+    }
+    return true;
+}
 
 chess_state get_state(gomoku_board const& board, point_t pos)
 {

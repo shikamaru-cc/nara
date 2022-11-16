@@ -52,19 +52,31 @@ class gomoku_ai
         return res;
     }
 
-    void update_state(point_t pos)
-    {
-        if (!board.outbox(pos))
-            states[pos.x][pos.y] = get_state(board, pos);
-    }
-
     void setchess(point_t pos, gomoku_chess chess)
     {
         board.setchess(pos, chess);
         zob[pos.x][pos.y] = zobrist_val(pos, chess);
+
         for (auto dir : directions)
+        {
             for (int fac = -4; fac <= 4; fac++)
-                update_state(pos + dir * fac);
+            {
+                auto p = pos + dir * fac;
+                if (fac == 0 or board.outbox(p))
+                    continue;
+
+                // auto begin = std::chrono::system_clock::now();
+
+                states[p.x][p.y].update_chess(chess, dir, -fac);
+
+                // auto end = std::chrono::system_clock::now();
+                // logger << "update state " << p << " elapsed " << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin) << std::endl;
+
+                // assert(state_equal(states[p.x][p.y], get_state(board, p)));
+            }
+        }
+
+        // logger.flush();
     }
 
     std::vector<point_t> gen_chooses(gomoku_board const& board, gomoku_chess next)
