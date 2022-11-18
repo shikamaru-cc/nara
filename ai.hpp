@@ -57,26 +57,16 @@ class gomoku_ai
         board.setchess(pos, chess);
         zob[pos.x][pos.y] = zobrist_val(pos, chess);
 
-        for (auto dir : directions)
+        for (int dir = 0; dir < 4; dir++)
         {
             for (int fac = -4; fac <= 4; fac++)
             {
                 auto p = pos + dir * fac;
                 if (fac == 0 or board.outbox(p))
                     continue;
-
-                // auto begin = std::chrono::system_clock::now();
-
                 states[p.x][p.y].update_chess(chess, dir, -fac);
-
-                // auto end = std::chrono::system_clock::now();
-                // logger << "update state " << p << " elapsed " << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin) << std::endl;
-
-                // assert(state_equal(states[p.x][p.y], get_state(board, p)));
             }
         }
-
-        // logger.flush();
     }
 
     std::vector<point_t> gen_chooses(gomoku_board const& board, gomoku_chess next)
@@ -218,7 +208,13 @@ class gomoku_ai
             return this->states[p1.x][p1.y].rankof(next) > this->states[p2.x][p2.y].rankof(next);
         };
 
+        auto start = std::chrono::system_clock::now();
+
         std::ranges::sort(ret, sorter);
+
+        auto end = std::chrono::system_clock::now();
+        logger << std::chrono::duration_cast<std::chrono::nanoseconds>(end - start) << std::endl;
+        logger.flush();
 
         return ret;
     }
@@ -256,6 +252,14 @@ class gomoku_ai
             return search_res_t(depth, evaluate(mine) - evaluate(oppof(mine)), last_move);
 
         auto chooses = gen_chooses(board, next);
+
+        // if (chooses.size() == 1)
+        // {
+        //     setchess(chooses[0], next);
+        //     auto res = alphabeta(chooses[0], oppof(next), alpha, beta, false, 0);
+        //     setchess(chooses[0], EMPTY);
+        //     return res;
+        // }
 
         point_t bestpos;
         zobrist_t bestzob;
@@ -335,7 +339,6 @@ class gomoku_ai
 
     void reset_board(gomoku_board const& _board)
     {
-        board.winner = _board.winner;
         for(int i = 0; i < 15; i++)
             for(int j = 0; j < 15; j++)
                 board.chesses[i][j] = _board.chesses[i][j];
@@ -364,7 +367,7 @@ class gomoku_ai
 
     point_t get_next(gomoku_board const& _board)
     {
-        static const int max_depth = 6;
+        static const int max_depth = 8;
 
         reset_board(_board);
         reset_states();

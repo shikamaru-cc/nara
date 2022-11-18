@@ -99,6 +99,8 @@ int bit_count(uint8_t x)
     return cnt;
 }
 
+using line_pattern = std::array<uint8_t, 2>;
+
 int cal_rank(uint8_t px, uint8_t py)
 {
     static const int rank[5] = {1, 4, 9, 16, 25};
@@ -109,6 +111,8 @@ int cal_rank(uint8_t px, uint8_t py)
             val += rank[bit_count(mask & px)];
     return val;
 }
+
+int cal_rank(line_pattern p) { return cal_rank(p[0], p[1]); }
 
 constexpr auto gen_category_table()
 {
@@ -123,89 +127,69 @@ constexpr auto gen_category_table()
 
 constexpr std::array<std::array<int, 256>, 256> category_table = gen_category_table();
 
-constexpr int get_category(uint8_t px, uint8_t py)
-{
-    return category_table[px][py];
-}
+constexpr int get_category(uint8_t px, uint8_t py) { return category_table[px][py]; }
 
-struct pattern_pair
-{
-    uint8_t px;
-    uint8_t py;
-};
+constexpr int get_category(line_pattern p) { return get_category(p[0], p[1]); }
 
 struct chess_state
 {
-    point_t pos;
-
     int neighbors[4];
 
-    pattern_pair pattern_blk[4];
-    pattern_pair pattern_wht[4];
+    line_pattern pattern_blk[4];
+    line_pattern pattern_wht[4];
 
-    std::array<std::array<int, 10>, 4> cats_blk;
-    std::array<std::array<int, 10>, 4> cats_wht;
+    using all_category = std::array<int, 10>;
 
-    pattern_pair get_pattern(gomoku_chess chess, point_t dir)
+    all_category cats_blk[4];
+    all_category cats_wht[4];
+
+    line_pattern get_pattern(gomoku_chess chess, int dir)
     {
         assert(chess == WHITE or chess == BLACK);
-        int idx = idx_of_dir(dir);
-        return (chess == BLACK) ? pattern_blk[idx] : pattern_wht[idx];
+        return (chess == BLACK) ? pattern_blk[dir] : pattern_wht[dir];
     }
 
-    void set_pattern(gomoku_chess chess, point_t dir, uint8_t px, uint8_t py)
+    void set_pattern(gomoku_chess chess, int dir, uint8_t px, uint8_t py)
     {
-        pattern_pair *ptr = (chess == BLACK) ? pattern_blk : pattern_wht;
-        ptr += idx_of_dir(dir);
-        ptr->px = px;
-        ptr->py = py;
+        auto & p = (chess == BLACK) ? pattern_blk[dir] : pattern_wht[dir];
+        p[0] = px;
+        p[1] = py;
     }
 
-    void update_chess(gomoku_chess chess, point_t dir, int step)
+    void update_chess(gomoku_chess chess, int dir, int step)
     {
         assert(step != 0);
 
-        int mask;
-        if (step > 0)
-            mask = (1 << 4) >> step;
-        else
-            mask = (1 << 3) << (-step);
-
-        int idx = idx_of_dir(dir);
+        int mask = (step > 0) ? (1 << 4) >> step : (1 << 3) << (-step);
 
         if (chess == EMPTY)
         {
-            pattern_blk[idx].px &= ~mask;
-            pattern_blk[idx].py &= ~mask;
-            pattern_wht[idx].px &= ~mask;
-            pattern_wht[idx].py &= ~mask;
+            pattern_blk[dir][0] &= ~mask;
+            pattern_blk[dir][1] &= ~mask;
+            pattern_wht[dir][0] &= ~mask;
+            pattern_wht[dir][1] &= ~mask;
 
             if (std::abs(step) <= 2)
-                neighbors[idx]--;
+                neighbors[dir]--;
         }
         else
         {
             if (chess == BLACK)
             {
-                pattern_blk[idx].px |= mask;
-                pattern_wht[idx].py |= mask;
+                pattern_blk[dir][0] |= mask;
+                pattern_wht[dir][1] |= mask;
             }
             else
             {
-                pattern_blk[idx].py |= mask;
-                pattern_wht[idx].px |= mask;
+                pattern_blk[dir][1] |= mask;
+                pattern_wht[dir][0] |= mask;
             }
 
             if (std::abs(step) <= 2)
-                neighbors[idx]++;
+                neighbors[dir]++;
         }
 
         update_cats(dir);
-    }
-
-    void set_neighbor(point_t dir, int cnt)
-    {
-        neighbors[idx_of_dir(dir)] = cnt;
     }
 
     int rankof(gomoku_chess chess)
@@ -214,9 +198,9 @@ struct chess_state
         for (size_t i = 0; i < 4; i++)
         {
             if (chess == BLACK)
-                val += cal_rank(pattern_blk[i].px, pattern_blk[i].py);
+                val += cal_rank(pattern_blk[i]);
             else
-                val += cal_rank(pattern_wht[i].px, pattern_wht[i].py);
+                val += cal_rank(pattern_wht[i]);
         }
         return val;
     }
@@ -228,35 +212,31 @@ struct chess_state
 
     bool has_category(gomoku_chess for_chess, int cat)
     {
-        for (auto dir : directions)
+        for (int dir = 0; dir < 4; dir++)
         {
             auto p = get_pattern(for_chess, dir);
-            if (cal_category(p.px, p.py) == cat)
+            if (cal_category(p[0], p[1]) == cat)
                 return true;
         }
         return false;
     }
 
-    void update_cats(point_t dir)
+    void update_cats(int dir)
     {
-        int idx = idx_of_dir(dir);
+        cats_blk[dir] = cats_wht[dir] = {0};
 
-        for (int i = 0; i < 10; i++)
-        {
-            cats_blk[idx][i] = 0;
-            cats_wht[idx][i] = 0;
-        }
+        line_pattern p;
 
-        auto p = get_pattern(BLACK, dir);
-        cats_blk[idx][get_category(p.px, p.py)]++;
+        p = get_pattern(BLACK, dir);
+        cats_blk[dir][get_category(p)]++;
 
         p = get_pattern(WHITE, dir);
-        cats_wht[idx][get_category(p.px, p.py)]++;
+        cats_wht[dir][get_category(p)]++;
     }
 
     void update_cats()
     {
-        for (auto dir : directions)
+        for (int dir = 0; dir < 4; dir++)
             update_cats(dir);
     }
 
@@ -269,42 +249,45 @@ struct chess_state
 
     auto cats_for(gomoku_chess chess)
     {
-        auto cats = (chess == BLACK) ? cats_blk : cats_wht;
-        return std::accumulate(
-                cats.cbegin(),
-                cats.cend(),
-                std::array<int, 10>{},
-                sum_cats);
+        const auto & cats = (chess == BLACK) ? cats_blk : cats_wht;
+        all_category ret = {0};
+
+        for (int dir = 0; dir < 4; dir++)
+            for (int cat = 0; cat < 10; cat++)
+                ret[cat] += cats[dir][cat];
+
+        return ret;
     }
 };
 
-bool state_equal(chess_state s1, chess_state s2)
-{
-    for (int i = 0; i < 4; i++)
-    {
-        if (s1.neighbors[i] != s2.neighbors[i] or
-            s1.pattern_blk[i].px != s2.pattern_blk[i].px or
-            s1.pattern_blk[i].py != s2.pattern_blk[i].py or
-            s1.pattern_wht[i].px != s2.pattern_wht[i].px or
-            s1.pattern_wht[i].py != s2.pattern_wht[i].py)
-            return false;
-    }
-    return true;
-}
+// bool state_equal(chess_state s1, chess_state s2)
+// {
+//     for (int i = 0; i < 4; i++)
+//     {
+//         if (s1.neighbors[i] != s2.neighbors[i] or
+//             s1.pattern_blk[i].px != s2.pattern_blk[i].px or
+//             s1.pattern_blk[i].py != s2.pattern_blk[i].py or
+//             s1.pattern_wht[i].px != s2.pattern_wht[i].px or
+//             s1.pattern_wht[i].py != s2.pattern_wht[i].py)
+//             return false;
+//     }
+//     return true;
+// }
 
 chess_state get_state(gomoku_board const& board, point_t pos)
 {
     chess_state ret;
-    ret.pos = pos;
-    for (auto dir : directions)
+    for (int dir = 0; dir < 4; dir++)
     {
         int neigh_cnt = 0;
         uint8_t blk_px, blk_py, wht_px, wht_py;
         blk_px = blk_py = wht_px = wht_py = 0;
         int i = 7;
-        for (auto p : mkline(pos, dir))
+        for (int fac = -4; fac <= 4; fac++)
         {
-            if (p == pos) continue;
+            if (fac == 0) continue;
+
+            point_t p = pos + directions[dir] * fac;
 
             if (board.outbox(p))
             {
@@ -328,21 +311,22 @@ chess_state get_state(gomoku_board const& board, point_t pos)
     }
     ret.update_cats();
 
-    for (auto dir : directions)
+    for (int dir = 0; dir < 4; dir++)
     {
         int neigh_cnt = 0;
-        for (auto p : mkline(pos, dir, 2))
+        for (int fac = -2; fac <= 2; fac++)
         {
-            if (p == pos) continue;
+            if (fac == 0) continue;
+
+            point_t p = pos + directions[dir] * fac;
 
             if (board.outbox(p))
                 continue;
 
-            auto chess = board.getchess(p);
-            if (chess == BLACK or chess == WHITE)
+            if (not board.getchess(p) == EMPTY)
                 neigh_cnt++;
         }
-        ret.set_neighbor(dir, neigh_cnt);
+        ret.neighbors[dir] = neigh_cnt;
     }
     return ret;
 }
@@ -370,10 +354,10 @@ gomoku_chess get_winner(gomoku_board const& board, point_t pos)
     if (chess == EMPTY)
         return EMPTY;
 
-    for (auto dir : directions)
+    for (int dir = 0; dir < 4; dir++)
     {
         auto p = get_state(board, pos).get_pattern(chess, dir);
-        if (cal_category(p.px, p.py) == FIVE)
+        if (cal_category(p[0], p[1]) == FIVE)
             return chess;
     }
 
