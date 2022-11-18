@@ -61,7 +61,7 @@ class gomoku_ai
         {
             for (int fac = -4; fac <= 4; fac++)
             {
-                auto p = pos + dir * fac;
+                auto p = pos + directions[dir] * fac;
                 if (fac == 0 or board.outbox(p))
                     continue;
                 states[p.x][p.y].update_chess(chess, dir, -fac);
@@ -89,7 +89,7 @@ class gomoku_ai
 
         for (auto p : all_points | std::views::transform(to_point))
         {
-            auto state = states[p.x][p.y];
+            auto & state = states[p.x][p.y];
 
             if (board.getchess(p) != EMPTY)
                 continue;
@@ -367,7 +367,7 @@ class gomoku_ai
 
     point_t get_next(gomoku_board const& _board)
     {
-        static const int max_depth = 8;
+        static const int max_depth = 6;
 
         reset_board(_board);
         reset_states();
