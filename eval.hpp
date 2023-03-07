@@ -133,8 +133,6 @@ constexpr int get_category(line_pattern p) { return get_category(p[0], p[1]); }
 
 struct chess_state
 {
-    int neighbors[4];
-
     line_pattern pattern_blk[4];
     line_pattern pattern_wht[4];
 
@@ -142,6 +140,10 @@ struct chess_state
 
     all_category cats_blk[4];
     all_category cats_wht[4];
+
+    int neighbors[4];
+
+    int rank[2];
 
     line_pattern get_pattern(gomoku_chess chess, int dir)
     {
@@ -154,6 +156,18 @@ struct chess_state
         auto & p = (chess == BLACK) ? pattern_blk[dir] : pattern_wht[dir];
         p[0] = px;
         p[1] = py;
+    }
+
+    int rankof(gomoku_chess chess) { return (chess == BLACK) ? rank[0] : rank[1]; }
+
+    void update_rank()
+    {
+        rank[0] = rank[1] = 0;
+        for (int dir = 0; dir < 4; dir++)
+        {
+            rank[0] += cal_rank(pattern_blk[dir]);
+            rank[1] += cal_rank(pattern_wht[dir]);
+        }
     }
 
     void update_chess(gomoku_chess chess, int dir, int step)
@@ -190,19 +204,7 @@ struct chess_state
         }
 
         update_cats(dir);
-    }
-
-    int rankof(gomoku_chess chess)
-    {
-        int val = 0;
-        for (size_t i = 0; i < 4; i++)
-        {
-            if (chess == BLACK)
-                val += cal_rank(pattern_blk[i]);
-            else
-                val += cal_rank(pattern_wht[i]);
-        }
-        return val;
+        update_rank();
     }
 
     bool has_neighbor()
@@ -310,6 +312,7 @@ chess_state get_state(gomoku_board const& board, point_t pos)
         ret.set_pattern(WHITE, dir, wht_px, wht_py);
     }
     ret.update_cats();
+    ret.update_rank();
 
     for (int dir = 0; dir < 4; dir++)
     {

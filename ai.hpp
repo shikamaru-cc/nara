@@ -62,9 +62,8 @@ class gomoku_ai
             for (int fac = -4; fac <= 4; fac++)
             {
                 auto p = pos + directions[dir] * fac;
-                if (fac == 0 or board.outbox(p))
-                    continue;
-                states[p.x][p.y].update_chess(chess, dir, -fac);
+                if (fac != 0 and not board.outbox(p))
+                    states[p.x][p.y].update_chess(chess, dir, -fac);
             }
         }
     }
@@ -208,13 +207,13 @@ class gomoku_ai
             return this->states[p1.x][p1.y].rankof(next) > this->states[p2.x][p2.y].rankof(next);
         };
 
-        auto start = std::chrono::system_clock::now();
+        // auto start = std::chrono::system_clock::now();
 
         std::ranges::sort(ret, sorter);
 
-        auto end = std::chrono::system_clock::now();
-        logger << std::chrono::duration_cast<std::chrono::nanoseconds>(end - start) << std::endl;
-        logger.flush();
+        // auto end = std::chrono::system_clock::now();
+        // logger << std::chrono::duration_cast<std::chrono::nanoseconds>(end - start) << std::endl;
+        // logger.flush();
 
         return ret;
     }
